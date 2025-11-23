@@ -31,9 +31,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .add_instructions(&rustc)?
         .emit()?;
 
-    GitEmitter::default()
-        .add_instructions(&gitcl)?
-        .emit()?;
+    GitEmitter::default().add_instructions(&gitcl)?.emit()?;
 
     Ok(())
 }
