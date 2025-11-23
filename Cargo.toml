@@ -76,6 +76,7 @@ similar = "2.7.0"
 sprs = "0.11.4"
 sqlx = "0.8.6"
 syn = "2.0.111"
+sysinfo = "0.37.2"
 tabled = "0.20.0"
 tempfile = "3.23.0"
 termcolor = "1.4.1"
@@ -94,3 +95,6 @@ whoami = "1.6.1"
 winit = "0.30.12"
 zip = "6.0.0"
 zstd = "0.13.3"
+
+[build-dependencies]
+vergen = { version = "9.0.6", features = ["build", "cargo", "rustc"] }

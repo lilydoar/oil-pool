@@ -5,6 +5,9 @@
 /// Game application - windowing, rendering, and input handling
 pub mod app;
 
+/// Build-time information (git SHA, branch, timestamp, etc.)
+pub mod build_info;
+
 /// Application configuration
 pub mod config;
 
