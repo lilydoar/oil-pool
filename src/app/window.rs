@@ -1,6 +1,6 @@
 //! Window configuration and management
 
-use crate::config::WindowConfig;
+use super::config::WindowConfig;
 use winit::dpi::LogicalSize;
 use winit::window::{Fullscreen, WindowAttributes};
 

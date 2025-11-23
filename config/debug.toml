@@ -1,5 +1,4 @@
 # Debug profile configuration
-# Optimized for debug builds with windowed mode and debugging features
 
 [window]
 title = "Oil Pool Game [DEBUG]"
@@ -8,4 +7,4 @@ height = 540.0
 fullscreen = false
 resizable = true
 decorated = true
-vsync = false  # Disabled for faster iteration during debug builds
+vsync = false

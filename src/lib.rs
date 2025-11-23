@@ -8,8 +8,5 @@ pub mod app;
 /// Build-time information (git SHA, branch, timestamp, etc.)
 pub mod build_info;
 
-/// Application configuration
-pub mod config;
-
 /// Game simulation - world state, entities, and physics
 pub mod sim;

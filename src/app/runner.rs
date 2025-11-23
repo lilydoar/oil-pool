@@ -8,8 +8,8 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
+use super::config::AppConfig;
 use super::window::window_attributes_from_config;
-use crate::config::AppConfig;
 use crate::sim::World;
 
 /// Main game application
