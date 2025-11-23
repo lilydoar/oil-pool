@@ -57,7 +57,12 @@ impl ApplicationHandler for App {
 
             match event_loop.create_window(window_attributes) {
                 Ok(window) => {
-                    info!("Window created successfully");
+                    let size = window.inner_size();
+                    info!(
+                        window.width = size.width,
+                        window.height = size.height,
+                        "Window created successfully"
+                    );
                     self.window = Some(window);
                     self.last_update = Some(Instant::now());
                 }
