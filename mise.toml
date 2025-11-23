@@ -1,2 +1,67 @@
 [tools]
-rust="latest"
+"cargo:bacon" = "latest"
+"cargo:cargo-audit" = "latest"
+"cargo:cargo-outdated" = "latest"
+"cargo:cargo-watch" = "latest"
+rust = "latest"
+
+[tasks.check]
+description = "Run quick checks (no codegen)"
+run = "cargo check --all-targets"
+
+[tasks.lint]
+description = "Run clippy and fix warnings automatically"
+run = "cargo clippy --fix --allow-dirty --allow-staged"
+
+[tasks.lint-check]
+description = "Run clippy linter without fixing"
+run = "cargo clippy --all-targets -- -D warnings"
+
+[tasks.fmt]
+description = "Format code"
+run = "cargo fmt"
+
+[tasks.fmt-check]
+description = "Check formatting without modifying files"
+run = "cargo fmt -- --check"
+
+[tasks.test]
+description = "Run tests"
+run = "cargo test"
+
+[tasks.test-verbose]
+description = "Run tests with output"
+run = "cargo test -- --nocapture"
+
+[tasks.build]
+description = "Build in release mode"
+run = "cargo build --release"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "cargo clean"
+
+[tasks.ci]
+description = "Run all CI checks locally"
+depends = ["fmt-check", "lint-check", "test"]
+run = "echo '✅ All CI checks passed!'"
+
+[tasks.watch]
+description = "Watch and run both tests and clippy"
+run = "bacon all"
+
+[tasks.doc]
+description = "Generate and open documentation"
+run = "cargo doc --no-deps --open"
+
+[tasks.update]
+description = "Update dependencies"
+run = "cargo update"
+
+[tasks.outdated]
+description = "Check for outdated dependencies (requires cargo-outdated)"
+run = "cargo outdated"
+
+[tasks.audit]
+description = "Security audit (requires cargo-audit)"
+run = "cargo audit"
