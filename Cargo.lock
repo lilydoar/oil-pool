@@ -4813,6 +4813,7 @@ dependencies = [
  "uuid",
  "validator",
  "vergen",
+ "vergen-gitcl",
  "walkdir",
  "wgpu",
  "whoami",
@@ -7716,6 +7717,20 @@ dependencies = [
  "rustc_version",
  "rustversion",
  "time",
+ "vergen-lib",
+]
+
+[[package]]
+name = "vergen-gitcl"
+version = "1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b9dfc1de6eb2e08a4ddf152f1b179529638bedc0ea95e6d667c014506377aefe"
+dependencies = [
+ "anyhow",
+ "derive_builder",
+ "rustversion",
+ "time",
+ "vergen",
  "vergen-lib",
 ]
 
