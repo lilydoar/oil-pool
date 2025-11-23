@@ -1848,17 +1848,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "currying"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f78c2422409474fa3e3529a6f24ccf05d36d3b4365c7395b7ea834a5cf7c3899"
-dependencies = [
- "moddef",
- "tupleops",
- "tupleops-macros",
-]
-
-[[package]]
 name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4843,12 +4832,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "moddef"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4a0b3262dc837d2513fe2ef31ff8461352ef932dcca31ba0c0abe33547cf6b9b"
-
-[[package]]
 name = "moxcms"
 version = "0.7.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5632,7 +5615,6 @@ dependencies = [
  "const_format",
  "cross",
  "crossterm",
- "currying",
  "directories 6.0.0",
  "dirs",
  "egui",
@@ -8543,31 +8525,6 @@ name = "ttf-parser"
 version = "0.25.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d2df906b07856748fa3f6e0ad0cbaa047052d4a7dd609e231c4f72cee8c36f31"
-
-[[package]]
-name = "tupleops"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e290078fe0f775c39aebc49987d4aac90c3b9539316acb240dc9ec2a4611156"
-dependencies = [
- "tupleops-macros",
-]
-
-[[package]]
-name = "tupleops-generator"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "136120de3f8963f0d6e1d736aead1c3ed0632c72f5a97f5ed1854818d69b6271"
-
-[[package]]
-name = "tupleops-macros"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ae3b0b025de1c76e24a54d30c8b0a0f4c019de78f5ed525d708bafd4b4717caa"
-dependencies = [
- "syn 1.0.109",
- "tupleops-generator",
-]
 
 [[package]]
 name = "typed-builder"
