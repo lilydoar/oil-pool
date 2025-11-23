@@ -1,9 +1,12 @@
 [tools]
+rust = "latest"
 "cargo:bacon" = "latest"
 "cargo:cargo-audit" = "latest"
 "cargo:cargo-outdated" = "latest"
 "cargo:cargo-watch" = "latest"
-rust = "latest"
+
+[env]
+RUST_BACKTRACE = "full"
 
 [tasks.check]
 description = "Run quick checks (no codegen)"
