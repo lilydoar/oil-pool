@@ -75,12 +75,12 @@ impl AppConfig {
     /// Finds the config directory by searching in multiple locations
     fn find_config_dir() -> Option<std::path::PathBuf> {
         // Try to find config dir relative to executable
-        if let Ok(exe_path) = std::env::current_exe() {
-            if let Some(exe_dir) = exe_path.parent() {
-                let config_dir = exe_dir.join("config");
-                if config_dir.exists() {
-                    return Some(config_dir);
-                }
+        if let Ok(exe_path) = std::env::current_exe()
+            && let Some(exe_dir) = exe_path.parent()
+        {
+            let config_dir = exe_dir.join("config");
+            if config_dir.exists() {
+                return Some(config_dir);
             }
         }
 
