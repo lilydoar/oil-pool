@@ -83,6 +83,7 @@ textwrap = "0.16.2"
 thiserror = "2.0.17"
 tokio = "1.48.0"
 tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 typed-builder = "0.23.2"
 url = "2.5.7"
 uuid = "1.18.1"

@@ -6,7 +6,9 @@ rust = "latest"
 "cargo:cargo-watch" = "latest"
 
 [env]
+APP_PROFILE = "debug"
 RUST_BACKTRACE = "full"
+RUST_LOG = "debug"
 
 [tasks.check]
 description = "Run quick checks (no codegen)"
@@ -37,6 +39,10 @@ description = "Run tests with output"
 run = "cargo test -- --nocapture"
 
 [tasks.build]
+description = "Build in debug mode"
+run = "cargo build"
+
+[tasks.release]
 description = "Build in release mode"
 run = "cargo build --release"
 

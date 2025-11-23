@@ -1,0 +1,11 @@
+# Release profile configuration
+# Optimized for release builds with fullscreen mode and performance features
+
+[window]
+title = "Oil Pool Game"
+width = 1920.0
+height = 1080.0
+fullscreen = true
+resizable = false
+decorated = false  # No window decorations in fullscreen
+vsync = true  # Enabled to prevent screen tearing

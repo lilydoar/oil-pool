@@ -1,57 +1,21 @@
-use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
-use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::window::{Window, WindowId};
-
-struct App {
-    window: Option<Window>,
-}
-
-impl ApplicationHandler for App {
-    fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_none() {
-            let window_attributes = Window::default_attributes()
-                .with_title("Oil Pool Game")
-                .with_inner_size(winit::dpi::LogicalSize::new(800.0, 600.0));
-
-            match event_loop.create_window(window_attributes) {
-                Ok(window) => {
-                    self.window = Some(window);
-                }
-                Err(e) => {
-                    eprintln!("Failed to create window: {}", e);
-                }
-            }
-        }
-    }
-
-    fn window_event(
-        &mut self,
-        event_loop: &ActiveEventLoop,
-        _window_id: WindowId,
-        event: WindowEvent,
-    ) {
-        match event {
-            WindowEvent::CloseRequested => {
-                println!("Close requested, exiting...");
-                event_loop.exit();
-            }
-            WindowEvent::RedrawRequested => {
-                // Handle rendering here when needed
-                if let Some(window) = &self.window {
-                    window.request_redraw();
-                }
-            }
-            _ => {}
-        }
-    }
-}
+use oil_pool::app::App;
+use tracing_subscriber::{EnvFilter, fmt, prelude::*};
+use winit::event_loop::{ControlFlow, EventLoop};
 
 fn main() {
+    // Initialize tracing subscriber
+    // Set RUST_LOG environment variable to control log level (e.g., RUST_LOG=debug)
+    tracing_subscriber::registry()
+        .with(fmt::layer())
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .init();
+
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);
 
-    let mut app = App { window: None };
+    // Load configuration from environment (defaults to "debug" profile)
+    // Set APP_PROFILE=release to use release configuration
+    let mut app = App::from_env();
 
     event_loop
         .run_app(&mut app)

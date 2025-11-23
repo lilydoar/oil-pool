@@ -1,0 +1,11 @@
+# Default application configuration
+# This serves as the base configuration that can be overridden by profile-specific configs
+
+[window]
+title = "Oil Pool Game"
+width = 800.0
+height = 600.0
+fullscreen = false
+resizable = true
+decorated = true
+vsync = true
