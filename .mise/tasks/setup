@@ -1,0 +1,54 @@
+#!/bin/bash
+#MISE description="Configure git hooks for pre-commit safety checks (runs once per clone)"
+set -Eeuo pipefail
+
+# Get script directory for consistent paths
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
+
+# Logging functions
+log_info() {
+    echo "[$(date +'%H:%M:%S')] ℹ️  $*"
+}
+
+log_success() {
+    echo "[$(date +'%H:%M:%S')] ✅ $*"
+}
+
+log_error() {
+    echo "[$(date +'%H:%M:%S')] ❌ $*" >&2
+}
+
+# Main execution
+main() {
+    cd "$PROJECT_ROOT" || {
+        log_error "Cannot change to project root: $PROJECT_ROOT"
+        exit 1
+    }
+
+    # Check if already configured
+    CURRENT_HOOKS_PATH=$(git config --local core.hooksPath || echo "")
+
+    if [[ "$CURRENT_HOOKS_PATH" == ".githooks" ]]; then
+        # Already configured - silent success
+        exit 0
+    fi
+
+    log_info "Configuring git hooks..."
+
+    # Configure git to use .githooks directory (repository-level config)
+    git config core.hooksPath .githooks
+
+    # Make hooks executable
+    chmod +x .githooks/* 2>/dev/null || true
+
+    log_success "Git hooks configured!"
+    echo ""
+    echo "Hooks configured:"
+    echo "  • pre-commit - Runs 'mise verify-check' before each commit"
+    echo ""
+    echo "The hook will run automatically on 'git commit'."
+    echo "To bypass: git commit --no-verify"
+}
+
+main "$@"

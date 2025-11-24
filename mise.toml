@@ -10,16 +10,47 @@ APP_PROFILE = "debug"
 RUST_BACKTRACE = "full"
 RUST_LOG = "debug"
 
+# ═══════════════════════════════════════════════════════════════
+# File-Based Tasks
+# ═══════════════════════════════════════════════════════════════
+# Most tasks are defined as executable files in .mise/tasks/
+# This provides better editor support, syntax highlighting, and standalone execution
+#
+# Available tasks:
+#   setup        - First-time git hooks configuration
+#   dev          - Start foreground dev mode (bacon)
+#   dev-bg       - Start background dev mode (multiple watchers)
+#   dev-stop     - Stop background dev mode
+#   dev-status   - Check background dev mode status
+#   verify       - Run all checks with auto-fix
+#   verify-check - Run all checks without auto-fix (for CI)
+
+# ═══════════════════════════════════════════════════════════════
+# Simple Inline Tasks
+# ═══════════════════════════════════════════════════════════════
+
+[tasks.dev-logs]
+description = "Show background development mode logs"
+run = "tail -f .mise-dev.log"
+
 [tasks.check]
-description = "Run quick checks (no codegen)"
+description = "Quick check without codegen"
 run = "cargo check --all-targets"
 
+[tasks.test]
+description = "Run all tests"
+run = "cargo test"
+
+[tasks.test-verbose]
+description = "Run tests with output"
+run = "cargo test -- --nocapture"
+
 [tasks.lint]
-description = "Run clippy and fix warnings automatically"
-run = "cargo clippy --fix --allow-dirty --allow-staged"
+description = "Run clippy and auto-fix warnings"
+run = "cargo clippy --fix --allow-dirty --allow-staged --all-targets"
 
 [tasks.lint-check]
-description = "Run clippy linter without fixing"
+description = "Run clippy without fixing (for CI)"
 run = "cargo clippy --all-targets -- -D warnings"
 
 [tasks.fmt]
@@ -27,22 +58,19 @@ description = "Format code"
 run = "cargo fmt"
 
 [tasks.fmt-check]
-description = "Check formatting without modifying files"
+description = "Check formatting without modifying (for CI)"
 run = "cargo fmt -- --check"
 
-[tasks.test]
-description = "Run tests"
-run = "cargo test"
+[tasks.ci]
+description = "Run all CI checks locally"
+depends = ["fmt-check", "lint-check", "test"]
+run = "echo '✅ All CI checks passed!'"
 
-[tasks.test-verbose]
-description = "Run tests with output"
-run = "cargo test -- --nocapture"
+# ═══════════════════════════════════════════════════════════════
+# Build & Run Tasks
+# ═══════════════════════════════════════════════════════════════
 
-[tasks.health-check]
-description = "Run application health checks"
-run = "cargo build --bin game && ./target/debug/game --health-check"
-
-[tasks.build]
+[tasks.build-debug]
 description = "Build in debug mode"
 run = "cargo build"
 
@@ -50,7 +78,7 @@ run = "cargo build"
 description = "Build and run in debug mode"
 run = "cargo build && ./target/debug/game"
 
-[tasks.release]
+[tasks.build-release]
 description = "Build in release mode"
 run = "cargo build --release"
 
@@ -58,131 +86,38 @@ run = "cargo build --release"
 description = "Build and run in release mode"
 run = "cargo build --release && ./target/release/game"
 
-[tasks.clean]
-description = "Clean build artifacts"
-run = "cargo clean"
+[tasks.health-check]
+description = "Run application health checks"
+run = "cargo build --bin game && ./target/debug/game --health-check"
 
-[tasks.ci]
-description = "Run all CI checks locally"
-depends = ["fmt-check", "lint-check", "test"]
-run = "echo '✅ All CI checks passed!'"
-
-[tasks.watch]
-description = "Watch and run both tests and clippy"
-run = "bacon"
-
-[tasks.watch-all]
-description = "Watch and run multiple tasks in parallel (build, test, check, lint) in background"
-run = """
-LOGFILE=".mise-watch-all.log"
-PIDFILE=".mise-watch-all.pid"
-
-# Check if already running
-if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
-  echo "❌ watch-all is already running (PID: $(cat $PIDFILE))"
-  echo "Run 'mise watch-all-stop' to stop it first"
-  exit 1
-fi
-
-# Start background process
-nohup bash -c '
-  trap "kill 0" EXIT
-  mise watch build &
-  mise watch test &
-  mise watch check &
-  mise watch lint-check &
-  wait
-' > "$LOGFILE" 2>&1 &
-
-echo $! > "$PIDFILE"
-echo "✅ watch-all started in background (PID: $(cat $PIDFILE))"
-echo "📝 Logs: tail -f $LOGFILE"
-echo "🛑 Stop: mise watch-all-stop"
-"""
-
-[tasks.watch-all-stop]
-description = "Stop the background watch-all task"
-run = """
-PIDFILE=".mise-watch-all.pid"
-
-if [ ! -f "$PIDFILE" ]; then
-  echo "❌ watch-all is not running (no PID file found)"
-  exit 1
-fi
-
-PID=$(cat "$PIDFILE")
-if ! kill -0 "$PID" 2>/dev/null; then
-  echo "❌ watch-all is not running (stale PID file)"
-  rm "$PIDFILE"
-  exit 1
-fi
-
-echo "Stopping watch-all (PID: $PID)..."
-kill "$PID" 2>/dev/null
-sleep 1
-
-# Force kill if still running
-if kill -0 "$PID" 2>/dev/null; then
-  echo "Force killing..."
-  kill -9 "$PID" 2>/dev/null
-fi
-
-rm "$PIDFILE"
-echo "✅ watch-all stopped"
-"""
-
-[tasks.watch-all-status]
-description = "Check if watch-all is running"
-run = """
-PIDFILE=".mise-watch-all.pid"
-
-if [ ! -f "$PIDFILE" ]; then
-  echo "⚫ watch-all is not running"
-  exit 0
-fi
-
-PID=$(cat "$PIDFILE")
-if kill -0 "$PID" 2>/dev/null; then
-  echo "✅ watch-all is running (PID: $PID)"
-  echo "📝 Logs: tail -f .mise-watch-all.log"
-else
-  echo "❌ watch-all is not running (stale PID file)"
-  rm "$PIDFILE"
-fi
-"""
-
-[tasks.watch-all-logs]
-description = "Show watch-all logs"
-run = "tail -f .mise-watch-all.log"
+# ═══════════════════════════════════════════════════════════════
+# Documentation Tasks
+# ═══════════════════════════════════════════════════════════════
 
 [tasks.doc]
-description = "Generate and open documentation"
+description = "Build and open project documentation"
 run = "cargo doc --no-deps --open"
 
 [tasks.doc-watch]
-description = "Watch and rebuild documentation on changes"
+description = "Rebuild documentation on changes (for dev-bg)"
 run = "cargo doc --no-deps"
 
-[tasks.doc-deps]
-description = "Build documentation for all dependencies"
-run = "cargo doc --no-deps=false --document-private-items"
+# ═══════════════════════════════════════════════════════════════
+# Maintenance Tasks
+# ═══════════════════════════════════════════════════════════════
 
-[tasks.doc-all]
-description = "Build and open full documentation (including all deps)"
-run = "cargo doc --document-private-items --open"
-
-[tasks.setup-env]
-description = "Setup project environment with full dependency docs cache"
-run = "cargo doc --document-private-items && echo '✅ Environment setup complete - all dependency docs cached in target/doc/'"
+[tasks.clean]
+description = "Clean all build artifacts"
+run = "cargo clean"
 
 [tasks.update]
 description = "Update dependencies"
 run = "cargo update"
 
 [tasks.outdated]
-description = "Check for outdated dependencies (requires cargo-outdated)"
+description = "Check for outdated dependencies"
 run = "cargo outdated"
 
 [tasks.audit]
-description = "Security audit (requires cargo-audit)"
+description = "Run security audit"
 run = "cargo audit"

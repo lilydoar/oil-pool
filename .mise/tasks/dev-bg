@@ -1,0 +1,79 @@
+#!/bin/bash
+#MISE description="Start background dev mode (build + test + check + lint + doc watchers in parallel, use dev-stop to stop)"
+#MISE depends=["setup"]
+set -Eeuo pipefail
+
+# Script: dev-bg
+# Purpose: Start development mode in background with multiple watchers
+# Usage: mise dev-bg
+
+# Get script directory for consistent paths
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+
+# Configuration
+readonly LOGFILE="${PROJECT_ROOT}/.mise-dev.log"
+readonly PIDFILE="${PROJECT_ROOT}/.mise-dev.pid"
+
+# Logging functions
+log_info() {
+    echo "[$(date +'%H:%M:%S')] ℹ️  $*"
+}
+
+log_error() {
+    echo "[$(date +'%H:%M:%S')] ❌ $*" >&2
+}
+
+# Check if already running
+check_already_running() {
+    if [[ -f "$PIDFILE" ]]; then
+        local pid
+        pid=$(cat "$PIDFILE")
+
+        if kill -0 "$pid" 2>/dev/null; then
+            log_error "Dev mode is already running in background (PID: $pid)"
+            echo "Run 'mise dev-stop' to stop it first" >&2
+            return 1
+        else
+            # Clean up stale PID file
+            rm -f "$PIDFILE"
+        fi
+    fi
+    return 0
+}
+
+# Main execution
+main() {
+    cd "$PROJECT_ROOT" || {
+        log_error "Cannot change to project root: $PROJECT_ROOT"
+        exit 1
+    }
+
+    check_already_running || exit 1
+
+    log_info "Starting dev mode (background)"
+
+    # Start background process group
+    nohup bash -c '
+        set -Eeuo pipefail
+        trap "kill 0" EXIT
+
+        mise watch build &
+        mise watch test &
+        mise watch check &
+        mise watch lint-check &
+        mise watch doc-watch &
+
+        wait
+    ' > "$LOGFILE" 2>&1 &
+
+    local pid=$!
+    echo "$pid" > "$PIDFILE"
+
+    log_info "Dev mode started in background (PID: $pid)"
+    echo "📝 Logs: mise dev-logs"
+    echo "🛑 Stop: mise dev-stop"
+    echo "📊 Status: mise dev-status"
+}
+
+main "$@"

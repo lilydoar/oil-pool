@@ -1,0 +1,78 @@
+#!/bin/bash
+#MISE description="Stop background development mode"
+set -Eeuo pipefail
+
+# Script: dev-stop
+# Purpose: Stop background development mode
+# Usage: mise dev-stop
+
+# Get script directory for consistent paths
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/.." && pwd -P)"
+
+# Configuration
+readonly PIDFILE="${PROJECT_ROOT}/.mise-dev.pid"
+
+# Logging functions
+log_info() {
+    echo "[$(date +'%H:%M:%S')] ℹ️  $*"
+}
+
+log_error() {
+    echo "[$(date +'%H:%M:%S')] ❌ $*" >&2
+}
+
+# Validate PID file exists
+validate_pidfile() {
+    if [[ ! -f "$PIDFILE" ]]; then
+        log_error "Dev mode is not running (no PID file found)"
+        echo "Start with 'mise dev --bg'" >&2
+        return 1
+    fi
+    return 0
+}
+
+# Check if process is running
+is_process_running() {
+    local -r pid="$1"
+    kill -0 "$pid" 2>/dev/null
+}
+
+# Stop the dev mode process
+stop_dev() {
+    local pid
+    pid=$(cat "$PIDFILE")
+
+    if ! is_process_running "$pid"; then
+        log_error "Dev mode is not running (stale PID file)"
+        rm -f "$PIDFILE"
+        return 1
+    fi
+
+    log_info "Stopping dev mode (PID: $pid)..."
+
+    # Try graceful termination first
+    if kill "$pid" 2>/dev/null; then
+        sleep 1
+
+        # Check if still running
+        if is_process_running "$pid"; then
+            log_info "Force killing..."
+            kill -9 "$pid" 2>/dev/null || true
+        fi
+    fi
+
+    # Clean up PID file
+    rm -f "$PIDFILE"
+
+    log_info "Dev mode stopped ✅"
+    return 0
+}
+
+# Main execution
+main() {
+    validate_pidfile || exit 1
+    stop_dev || exit 1
+}
+
+main "$@"

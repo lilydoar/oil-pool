@@ -1,0 +1,22 @@
+#!/bin/bash
+set -e
+
+# Pre-commit hook: Run safety checks before allowing commit
+# Runs: mise verify-check (fmt-check + lint-check + tests)
+
+echo "🔍 Running pre-commit checks..."
+echo ""
+
+# Run verify-check (no auto-fix, same as CI)
+if mise verify-check; then
+    echo ""
+    echo "✅ All pre-commit checks passed!"
+    exit 0
+else
+    echo ""
+    echo "❌ Pre-commit checks failed!"
+    echo ""
+    echo "Fix issues with: mise verify"
+    echo "Or bypass with: git commit --no-verify"
+    exit 1
+fi

@@ -1,0 +1,102 @@
+#!/bin/bash
+#MISE description="Run all safety checks with auto-fix (fmt + lint + test, run before committing)"
+#MISE depends=["setup"]
+set -Eeuo pipefail
+
+# Get script directory for consistent paths
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
+
+# Configuration
+FAILED_CHECKS=()
+
+# Logging functions
+log_info() {
+    echo "[$(date +'%H:%M:%S')] ℹ️  $*"
+}
+
+log_success() {
+    echo "[$(date +'%H:%M:%S')] ✅ $*"
+}
+
+log_error() {
+    echo "[$(date +'%H:%M:%S')] ❌ $*" >&2
+}
+
+# Check formatting
+check_format() {
+    log_info "Formatting code..."
+
+    if cargo fmt; then
+        log_success "Code formatted"
+        return 0
+    else
+        log_error "Formatting failed"
+        FAILED_CHECKS+=("format")
+        return 1
+    fi
+}
+
+# Check linting
+check_lint() {
+    log_info "Running clippy with auto-fix..."
+
+    if cargo clippy --fix --allow-dirty --allow-staged --all-targets -- -D warnings; then
+        log_success "Linting passed (with fixes applied)"
+        return 0
+    else
+        log_error "Linting failed"
+        FAILED_CHECKS+=("lint")
+        return 1
+    fi
+}
+
+# Run tests
+run_tests() {
+    log_info "Running tests..."
+
+    if cargo test; then
+        log_success "All tests passed"
+        return 0
+    else
+        log_error "Tests failed"
+        FAILED_CHECKS+=("test")
+        return 1
+    fi
+}
+
+# Print summary
+print_summary() {
+    echo ""
+    echo "═══════════════════════════════════════"
+
+    if [[ ${#FAILED_CHECKS[@]} -eq 0 ]]; then
+        log_success "All checks passed! ✨"
+        echo "═══════════════════════════════════════"
+        return 0
+    else
+        log_error "Failed checks: ${FAILED_CHECKS[*]}"
+        echo "═══════════════════════════════════════"
+        return 1
+    fi
+}
+
+# Main execution
+main() {
+    cd "$PROJECT_ROOT" || {
+        log_error "Cannot change to project root: $PROJECT_ROOT"
+        exit 1
+    }
+
+    log_info "Starting verification checks (with auto-fix)..."
+    echo ""
+
+    # Run all checks (don't exit early)
+    check_format || true
+    check_lint || true
+    run_tests || true
+
+    print_summary
+}
+
+main "$@"

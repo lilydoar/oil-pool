@@ -20,7 +20,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .channel(true) // Rust channel (stable, beta, nightly)
         .build()?;
 
-    // Emit git metadata using git command-line
     let gitcl = GitclBuilder::default()
         .sha(true) // Git commit SHA
         .branch(true) // Git branch name

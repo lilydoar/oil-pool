@@ -1,0 +1,45 @@
+#!/bin/bash
+#MISE description="Start foreground dev mode with instant feedback (bacon: test + lint on save, Ctrl+C to stop)"
+#MISE depends=["setup"]
+set -Eeuo pipefail
+
+# Get script directory for consistent paths
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+PROJECT_ROOT="$(cd -- "$SCRIPT_DIR/../.." && pwd -P)"
+
+# Logging functions
+log_info() {
+    echo "[$(date +'%H:%M:%S')] ℹ️  $*"
+}
+
+log_error() {
+    echo "[$(date +'%H:%M:%S')] ❌ $*" >&2
+}
+
+# Check dependencies
+check_dependencies() {
+    if ! command -v bacon &>/dev/null; then
+        log_error "bacon not found"
+        echo "" >&2
+        echo "Install with: cargo install bacon" >&2
+        return 1
+    fi
+}
+
+# Main execution
+main() {
+    cd "$PROJECT_ROOT" || {
+        log_error "Cannot change to project root: $PROJECT_ROOT"
+        exit 1
+    }
+
+    check_dependencies || exit 1
+
+    log_info "Starting dev mode (foreground - bacon)"
+    echo "Press Ctrl+C to stop"
+    echo ""
+
+    exec bacon
+}
+
+main "$@"
