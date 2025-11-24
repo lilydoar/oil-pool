@@ -71,9 +71,109 @@ run = "echo '✅ All CI checks passed!'"
 description = "Watch and run both tests and clippy"
 run = "bacon"
 
+[tasks.watch-all]
+description = "Watch and run multiple tasks in parallel (build, test, check, lint) in background"
+run = """
+LOGFILE=".mise-watch-all.log"
+PIDFILE=".mise-watch-all.pid"
+
+# Check if already running
+if [ -f "$PIDFILE" ] && kill -0 $(cat "$PIDFILE") 2>/dev/null; then
+  echo "❌ watch-all is already running (PID: $(cat $PIDFILE))"
+  echo "Run 'mise watch-all-stop' to stop it first"
+  exit 1
+fi
+
+# Start background process
+nohup bash -c '
+  trap "kill 0" EXIT
+  mise watch build &
+  mise watch test &
+  mise watch check &
+  mise watch lint-check &
+  wait
+' > "$LOGFILE" 2>&1 &
+
+echo $! > "$PIDFILE"
+echo "✅ watch-all started in background (PID: $(cat $PIDFILE))"
+echo "📝 Logs: tail -f $LOGFILE"
+echo "🛑 Stop: mise watch-all-stop"
+"""
+
+[tasks.watch-all-stop]
+description = "Stop the background watch-all task"
+run = """
+PIDFILE=".mise-watch-all.pid"
+
+if [ ! -f "$PIDFILE" ]; then
+  echo "❌ watch-all is not running (no PID file found)"
+  exit 1
+fi
+
+PID=$(cat "$PIDFILE")
+if ! kill -0 "$PID" 2>/dev/null; then
+  echo "❌ watch-all is not running (stale PID file)"
+  rm "$PIDFILE"
+  exit 1
+fi
+
+echo "Stopping watch-all (PID: $PID)..."
+kill "$PID" 2>/dev/null
+sleep 1
+
+# Force kill if still running
+if kill -0 "$PID" 2>/dev/null; then
+  echo "Force killing..."
+  kill -9 "$PID" 2>/dev/null
+fi
+
+rm "$PIDFILE"
+echo "✅ watch-all stopped"
+"""
+
+[tasks.watch-all-status]
+description = "Check if watch-all is running"
+run = """
+PIDFILE=".mise-watch-all.pid"
+
+if [ ! -f "$PIDFILE" ]; then
+  echo "⚫ watch-all is not running"
+  exit 0
+fi
+
+PID=$(cat "$PIDFILE")
+if kill -0 "$PID" 2>/dev/null; then
+  echo "✅ watch-all is running (PID: $PID)"
+  echo "📝 Logs: tail -f .mise-watch-all.log"
+else
+  echo "❌ watch-all is not running (stale PID file)"
+  rm "$PIDFILE"
+fi
+"""
+
+[tasks.watch-all-logs]
+description = "Show watch-all logs"
+run = "tail -f .mise-watch-all.log"
+
 [tasks.doc]
 description = "Generate and open documentation"
 run = "cargo doc --no-deps --open"
+
+[tasks.doc-watch]
+description = "Watch and rebuild documentation on changes"
+run = "cargo doc --no-deps"
+
+[tasks.doc-deps]
+description = "Build documentation for all dependencies"
+run = "cargo doc --no-deps=false --document-private-items"
+
+[tasks.doc-all]
+description = "Build and open full documentation (including all deps)"
+run = "cargo doc --document-private-items --open"
+
+[tasks.setup-env]
+description = "Setup project environment with full dependency docs cache"
+run = "cargo doc --document-private-items && echo '✅ Environment setup complete - all dependency docs cached in target/doc/'"
 
 [tasks.update]
 description = "Update dependencies"

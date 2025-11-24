@@ -1,1 +1,5 @@
 /target
+
+# mise watch-all background task files
+.mise-watch-all.log
+.mise-watch-all.pid
