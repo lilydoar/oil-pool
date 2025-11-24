@@ -24,9 +24,11 @@ fn main() {
     let args = Args::parse();
     // Initialize tracing subscriber
     // Set RUST_LOG environment variable to control log level (e.g., RUST_LOG=debug)
+    // Default to debug for app, but info for noisy graphics libraries
+    let default_filter = "debug,naga=info,wgpu=info,wgpu_core=info,wgpu_hal=info";
     tracing_subscriber::registry()
         .with(fmt::layer())
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
+        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_filter)))
         .init();
 
     // Log build information

@@ -164,9 +164,30 @@ impl ApplicationHandler for App {
                     let debug_ui = &mut self.debug_ui;
                     let world = &self.world;
                     let config = renderer.config().clone();
-                    match renderer.draw(window, |ctx| {
+                    match renderer.draw(window, world, |ctx, texture_id| {
+                        // Editor Layout
+                        egui::SidePanel::left("tools_panel")
+                            .resizable(true)
+                            .default_width(200.0)
+                            .show(ctx, |ui| {
+                                ui.heading("Tools");
+                                ui.separator();
+                                ui.label("Select Tool");
+                                ui.button("Select");
+                                ui.button("Move");
+                                ui.button("Rotate");
+                            });
+
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            // Game View
+                            // Display the simulation texture filling the available space
+                            // We use ui.available_size() to fill the central panel
+                            let size = ui.available_size();
+                            ui.image(egui::load::SizedTexture::new(texture_id, size));
+                        });
+
+                        // Debug UI overlay
                         debug_ui.render(ctx, world, &config);
-                        // Future: Game UI will be rendered here
                     }) {
                         Ok(_) => {}
                         Err(wgpu::SurfaceError::Lost) => {

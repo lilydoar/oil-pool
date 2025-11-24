@@ -2,11 +2,16 @@
 
 use std::sync::Arc;
 
+use crate::sim::World;
 use egui::Context;
 use tracing::info;
 use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::event::WindowEvent;
 use winit::window::Window;
+
+pub mod sim;
+pub mod viewport;
+use sim::SimRenderer;
 
 /// Renderer handles wgpu setup and egui rendering
 pub struct Renderer {
@@ -17,6 +22,7 @@ pub struct Renderer {
     egui_ctx: Context,
     egui_state: egui_winit::State,
     egui_renderer: egui_wgpu::Renderer,
+    sim_renderer: SimRenderer,
 }
 
 impl Renderer {
@@ -106,7 +112,7 @@ impl Renderer {
             None,
         );
 
-        let egui_renderer = egui_wgpu::Renderer::new(
+        let mut egui_renderer = egui_wgpu::Renderer::new(
             &device,
             config.format,
             egui_wgpu::RendererOptions {
@@ -114,6 +120,14 @@ impl Renderer {
                 msaa_samples: 1,
                 ..Default::default()
             },
+        );
+
+        // Initialize sim renderer
+        let sim_renderer = SimRenderer::new(
+            &device,
+            &mut egui_renderer,
+            config.width,
+            config.height,
         );
 
         info!("egui initialized successfully");
@@ -126,6 +140,7 @@ impl Renderer {
             egui_ctx,
             egui_state,
             egui_renderer,
+            sim_renderer,
         })
     }
 
@@ -141,6 +156,15 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
+            
+            // Resize sim renderer (currently matches window size)
+            self.sim_renderer.resize(
+                &self.device,
+                &mut self.egui_renderer,
+                new_size.width,
+                new_size.height,
+            );
+
             info!(
                 width = new_size.width,
                 height = new_size.height,
@@ -153,7 +177,8 @@ impl Renderer {
     pub fn draw(
         &mut self,
         window: &Window,
-        mut render_ui: impl FnMut(&Context),
+        world: &World,
+        mut render_ui: impl FnMut(&Context, egui::TextureId),
     ) -> Result<(), wgpu::SurfaceError> {
         // Get the surface texture
         let output = self.surface.get_current_texture()?;
@@ -161,22 +186,25 @@ impl Renderer {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
-        // Prepare egui
-        let raw_input = self.egui_state.take_egui_input(window);
-        let full_output = self.egui_ctx.run(raw_input, |ctx| {
-            render_ui(ctx);
-        });
-
-        // Handle platform output
-        self.egui_state
-            .handle_platform_output(window, full_output.platform_output);
-
-        // Prepare rendering
+        // Prepare rendering encoder
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+
+        // Draw simulation first (to offscreen texture)
+        self.sim_renderer.draw(&mut encoder, world);
+
+        // Prepare egui
+        let raw_input = self.egui_state.take_egui_input(window);
+        let full_output = self.egui_ctx.run(raw_input, |ctx| {
+            render_ui(ctx, self.sim_renderer.texture_id());
+        });
+
+        // Handle platform output
+        self.egui_state
+            .handle_platform_output(window, full_output.platform_output);
 
         let screen_descriptor = egui_wgpu::ScreenDescriptor {
             size_in_pixels: [self.config.width, self.config.height],
