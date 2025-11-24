@@ -153,7 +153,7 @@ impl Renderer {
     pub fn draw(
         &mut self,
         window: &Window,
-        render_ui: impl FnOnce(&Context),
+        mut render_ui: impl FnMut(&Context),
     ) -> Result<(), wgpu::SurfaceError> {
         // Get the surface texture
         let output = self.surface.get_current_texture()?;

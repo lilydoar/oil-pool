@@ -61,16 +61,6 @@ impl Default for App {
 }
 
 impl App {
-    /// Renders all UI (debug + game)
-    fn render_ui(&mut self, ctx: &egui::Context) {
-        // Render debug UI
-        if let Some(renderer) = &self.renderer {
-            self.debug_ui.render(ctx, &self.world, renderer.config());
-        }
-
-        // Future: Game UI will be added here
-    }
-
     /// Toggles debug window (debug builds only)
     #[cfg(debug_assertions)]
     fn toggle_debug_window(&mut self) {
@@ -173,9 +163,9 @@ impl ApplicationHandler for App {
                 if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
                     let debug_ui = &mut self.debug_ui;
                     let world = &self.world;
-                    let config = renderer.config();
+                    let config = renderer.config().clone();
                     match renderer.draw(window, |ctx| {
-                        debug_ui.render(ctx, world, config);
+                        debug_ui.render(ctx, world, &config);
                         // Future: Game UI will be rendered here
                     }) {
                         Ok(_) => {}
