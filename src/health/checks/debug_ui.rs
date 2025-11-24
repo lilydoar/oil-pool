@@ -49,7 +49,11 @@ impl SystemCheck for DebugUICheck {
 
         details.push(format!(
             "  ✓ Default visibility: {} (expected for build type)",
-            if ui_state.show_window { "visible" } else { "hidden" }
+            if ui_state.show_window {
+                "visible"
+            } else {
+                "hidden"
+            }
         ));
 
         // Test toggle functionality (debug builds only)
@@ -96,7 +100,7 @@ impl SystemCheck for DebugUICheck {
         }
 
         // FPS should be approximately 60 (allow for timing variance)
-        if fps < 30.0 || fps > 120.0 {
+        if !(30.0..=120.0).contains(&fps) {
             details.push(format!(
                 "  ⚠ FPS calculation seems off: {:.1} (expected ~60)",
                 fps
@@ -112,7 +116,9 @@ impl SystemCheck for DebugUICheck {
         ui_state.show_debug_info = false;
         ui_state.show_system_info = true;
 
-        if ui_state.show_fps || !ui_state.show_world_state || ui_state.show_debug_info
+        if ui_state.show_fps
+            || !ui_state.show_world_state
+            || ui_state.show_debug_info
             || !ui_state.show_system_info
         {
             details.push("  ✗ Panel toggle state incorrect".to_string());

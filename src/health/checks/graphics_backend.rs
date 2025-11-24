@@ -37,7 +37,7 @@ impl SystemCheck for GraphicsBackendCheck {
         details.push("  ✓ wgpu instance created".to_string());
 
         // Enumerate available adapters
-        let adapters: Vec<_> = instance.enumerate_adapters(wgpu::Backends::all()).collect();
+        let adapters = instance.enumerate_adapters(wgpu::Backends::all());
 
         if adapters.is_empty() {
             details.push("  ✗ No graphics adapters found".to_string());
@@ -84,8 +84,11 @@ impl SystemCheck for GraphicsBackendCheck {
 
         // Determine status
         if has_discrete {
-            CheckResult::pass(format!("{} adapters found (discrete GPU available)", adapters.len()))
-                .with_details(details.join("\n"))
+            CheckResult::pass(format!(
+                "{} adapters found (discrete GPU available)",
+                adapters.len()
+            ))
+            .with_details(details.join("\n"))
         } else if has_integrated {
             CheckResult::warn(format!(
                 "{} adapters found (integrated GPU only)",

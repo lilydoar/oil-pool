@@ -16,6 +16,9 @@
 //!     .add_check(WorldCheck::new())
 //!     .add_check(BuildInfoCheck::new())
 //!     .add_check(SystemInfoCheck::new())
+//!     .add_check(GraphicsBackendCheck::new())
+//!     .add_check(DebugUICheck::new())
+//!     .add_check(EguiContextCheck::new())
 //!     .run();
 //!
 //! if report.is_healthy() {
@@ -39,5 +42,8 @@ pub fn run_all_checks() -> HealthCheckReport {
         .add_check(checks::WorldCheck::new())
         .add_check(checks::BuildInfoCheck::new())
         .add_check(checks::SystemInfoCheck::new())
+        .add_check(checks::GraphicsBackendCheck::new())
+        .add_check(checks::DebugUICheck::new())
+        .add_check(checks::EguiContextCheck::new())
         .run()
 }

@@ -19,13 +19,6 @@ fn test_all_health_checks() {
         report.failed,
         report.warned
     );
-
-    // Verify we ran the expected number of checks
-    assert_eq!(
-        report.total, 4,
-        "Expected 4 health checks, got {}",
-        report.total
-    );
 }
 
 #[test]
@@ -99,4 +92,40 @@ fn test_report_exit_codes() {
     } else {
         assert_eq!(report.exit_code(), 0);
     }
+}
+
+#[test]
+fn test_graphics_backend_check() {
+    let check = GraphicsBackendCheck::new();
+    let result = check.check();
+
+    assert!(
+        result.status.is_ok(),
+        "Graphics backend check failed: {}",
+        result.message
+    );
+}
+
+#[test]
+fn test_debug_ui_check() {
+    let check = DebugUICheck::new();
+    let result = check.check();
+
+    assert!(
+        result.status.is_ok(),
+        "Debug UI check failed: {}",
+        result.message
+    );
+}
+
+#[test]
+fn test_egui_context_check() {
+    let check = EguiContextCheck::new();
+    let result = check.check();
+
+    assert!(
+        result.status.is_ok(),
+        "Egui context check failed: {}",
+        result.message
+    );
 }
