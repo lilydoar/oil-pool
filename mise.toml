@@ -11,21 +11,6 @@ RUST_BACKTRACE = "full"
 RUST_LOG = "debug"
 
 # ═══════════════════════════════════════════════════════════════
-# File-Based Tasks
-# ═══════════════════════════════════════════════════════════════
-# Most tasks are defined as executable files in .mise/tasks/
-# This provides better editor support, syntax highlighting, and standalone execution
-#
-# Available tasks:
-#   setup        - First-time git hooks configuration
-#   dev          - Start foreground dev mode (bacon)
-#   dev-bg       - Start background dev mode (multiple watchers)
-#   dev-stop     - Stop background dev mode
-#   dev-status   - Check background dev mode status
-#   verify       - Run all checks with auto-fix
-#   verify-check - Run all checks without auto-fix (for CI)
-
-# ═══════════════════════════════════════════════════════════════
 # Simple Inline Tasks
 # ═══════════════════════════════════════════════════════════════
 
