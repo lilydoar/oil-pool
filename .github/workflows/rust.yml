@@ -13,9 +13,31 @@ jobs:
   build:
 
     runs-on: ubuntu-latest
-
+    
     steps:
+    
     - uses: actions/checkout@v4
+    
+    # Cache cargo registry (downloaded crates + git checkouts)
+    - name: Cache cargo registry
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/registry
+          ~/.cargo/git
+        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-registry-
+
+    # Cache compiled artifacts (target directory)
+    - name: Cache target directory
+      uses: actions/cache@v4
+      with:
+        path: target
+        key: ${{ runner.os }}-cargo-target-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-target-
+
     - name: Build
       run: cargo build --verbose
     - name: Run tests
