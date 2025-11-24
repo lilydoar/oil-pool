@@ -20,7 +20,7 @@ bytes = "1.11.0"
 cached = "0.56.0"
 cbindgen = "0.29.2"
 chrono = "0.4.42"
-clap = "4.5.53"
+clap = { version = "4.5.53", features = ["derive"] }
 collider = "0.3.1"
 color-eyre = "0.6.5"
 colored = "3.0.0"

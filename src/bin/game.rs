@@ -1,10 +1,27 @@
+use clap::Parser;
 use oil_pool::app::App;
 use oil_pool::build_info;
+use oil_pool::health;
 use sysinfo::System;
 use tracing_subscriber::{EnvFilter, fmt, prelude::*};
 use winit::event_loop::{ControlFlow, EventLoop};
 
+/// Oil Pool Game
+#[derive(Parser, Debug)]
+#[command(name = "game")]
+#[command(about = "Oil Pool Game", long_about = None)]
+struct Args {
+    /// Run health checks and exit
+    #[arg(long)]
+    health_check: bool,
+
+    /// Run in headless mode (no window)
+    #[arg(long)]
+    headless: bool,
+}
+
 fn main() {
+    let args = Args::parse();
     // Initialize tracing subscriber
     // Set RUST_LOG environment variable to control log level (e.g., RUST_LOG=debug)
     tracing_subscriber::registry()
@@ -38,6 +55,22 @@ fn main() {
 
     // Log runtime system information (anonymous)
     log_system_info();
+
+    // Handle health check mode
+    if args.health_check {
+        tracing::info!("Running health checks...");
+        let report = health::run_all_checks();
+        health::print_report(&report);
+        std::process::exit(report.exit_code());
+    }
+
+    // Handle headless mode
+    if args.headless {
+        tracing::info!("Running in headless mode");
+        tracing::warn!("Headless mode not yet fully implemented");
+        // TODO: Implement headless execution (no window, simulation only)
+        std::process::exit(0);
+    }
 
     let event_loop = EventLoop::new().expect("Failed to create event loop");
     event_loop.set_control_flow(ControlFlow::Poll);

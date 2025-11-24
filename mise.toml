@@ -38,13 +38,25 @@ run = "cargo test"
 description = "Run tests with output"
 run = "cargo test -- --nocapture"
 
+[tasks.health-check]
+description = "Run application health checks"
+run = "cargo build --bin game && ./target/debug/game --health-check"
+
 [tasks.build]
 description = "Build in debug mode"
 run = "cargo build"
 
+[tasks.run-debug]
+description = "Build and run in debug mode"
+run = "cargo build && ./target/debug/game"
+
 [tasks.release]
 description = "Build in release mode"
 run = "cargo build --release"
+
+[tasks.run-release]
+description = "Build and run in release mode"
+run = "cargo build --release && ./target/release/game"
 
 [tasks.clean]
 description = "Clean build artifacts"
