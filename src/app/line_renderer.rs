@@ -4,8 +4,8 @@
 //! Lines are represented as quads (two triangles) to support variable thickness.
 
 use wgpu::{
-    util::DeviceExt, BindGroup, BindGroupLayout, Buffer, Device, Queue, RenderPass,
-    RenderPipeline, SurfaceConfiguration,
+    BindGroup, BindGroupLayout, Buffer, Device, Queue, RenderPass, RenderPipeline,
+    SurfaceConfiguration, util::DeviceExt,
 };
 
 use super::shader_system::Shader;
@@ -175,7 +175,7 @@ impl LineRenderer {
     }
 
     /// Updates the vertex buffer with current lines
-    fn update_vertex_buffer(&mut self, device: &Device, queue: &Queue) {
+    fn update_vertex_buffer(&mut self, device: &Device, _queue: &Queue) {
         // Generate vertices from all lines
         let mut vertices = Vec::new();
         for line in &self.lines {
@@ -189,11 +189,13 @@ impl LineRenderer {
         }
 
         // Create or update vertex buffer
-        self.vertex_buffer = Some(device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("Line Vertex Buffer"),
-            contents: bytemuck::cast_slice(&vertices),
-            usage: wgpu::BufferUsages::VERTEX,
-        }));
+        self.vertex_buffer = Some(
+            device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: Some("Line Vertex Buffer"),
+                contents: bytemuck::cast_slice(&vertices),
+                usage: wgpu::BufferUsages::VERTEX,
+            }),
+        );
     }
 
     /// Updates the uniform buffer with current screen size
@@ -335,5 +337,9 @@ impl Shader for LineRenderer {
 
     fn end_frame(&mut self) {
         self.clear();
+    }
+
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any {
+        self
     }
 }

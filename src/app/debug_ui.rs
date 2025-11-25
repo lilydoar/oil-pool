@@ -12,6 +12,7 @@ pub struct DebugUIState {
     pub show_world_state: bool,
     pub show_debug_info: bool,
     pub show_system_info: bool,
+    pub show_mouse_info: bool,
     frame_times: Vec<f32>,
     last_frame_time: Instant,
 }
@@ -24,6 +25,7 @@ impl Default for DebugUIState {
             show_world_state: true,
             show_debug_info: true,
             show_system_info: true,
+            show_mouse_info: true,
             frame_times: Vec::with_capacity(100),
             last_frame_time: Instant::now(),
         }
@@ -69,6 +71,9 @@ impl DebugUIState {
         ctx: &egui::Context,
         world: &crate::sim::World,
         surface_config: &wgpu::SurfaceConfiguration,
+        cursor_pos: Option<winit::dpi::PhysicalPosition<f64>>,
+        viewport_rect: Option<egui::Rect>,
+        last_click_info: &Option<String>,
     ) {
         // Only show debug window if enabled
         if !self.show_window {
@@ -90,6 +95,7 @@ impl DebugUIState {
 
                 // Toggle checkboxes
                 ui.checkbox(&mut self.show_fps, "FPS");
+                ui.checkbox(&mut self.show_mouse_info, "Mouse Info");
                 ui.checkbox(&mut self.show_world_state, "World State");
                 ui.checkbox(&mut self.show_debug_info, "Renderer Info");
                 ui.checkbox(&mut self.show_system_info, "System Info");
@@ -111,6 +117,61 @@ impl DebugUIState {
                                     0.0
                                 }
                             ));
+                            ui.separator();
+                        }
+
+                        // Mouse Info Section
+                        if self.show_mouse_info {
+                            ui.heading("Mouse Info");
+
+                            // Cursor position (window coordinates)
+                            if let Some(pos) = cursor_pos {
+                                ui.label(format!("Window pos: ({:.1}, {:.1})", pos.x, pos.y));
+                            } else {
+                                ui.label("Window pos: None");
+                            }
+
+                            // Egui hover position
+                            if let Some(hover_pos) = ctx.pointer_hover_pos() {
+                                ui.label(format!(
+                                    "Egui pos: ({:.1}, {:.1})",
+                                    hover_pos.x, hover_pos.y
+                                ));
+                            } else {
+                                ui.label("Egui pos: None");
+                            }
+
+                            // Mouse button states
+                            let pointer = ctx.input(|i| i.pointer.clone());
+                            ui.label(format!("Primary down: {}", pointer.primary_down()));
+                            ui.label(format!("Secondary down: {}", pointer.secondary_down()));
+                            ui.label(format!("Middle down: {}", pointer.middle_down()));
+
+                            // Viewport info
+                            if let Some(rect) = viewport_rect {
+                                ui.label(format!(
+                                    "Viewport: ({:.0}, {:.0}) -> ({:.0}, {:.0})",
+                                    rect.left(),
+                                    rect.top(),
+                                    rect.right(),
+                                    rect.bottom()
+                                ));
+                                ui.label(format!(
+                                    "Viewport size: {:.0}x{:.0}",
+                                    rect.width(),
+                                    rect.height()
+                                ));
+                            } else {
+                                ui.label("Viewport: None");
+                            }
+
+                            // Last click info
+                            if let Some(info) = last_click_info {
+                                ui.label(format!("Last click: {}", info));
+                            } else {
+                                ui.label("Last click: None");
+                            }
+
                             ui.separator();
                         }
 

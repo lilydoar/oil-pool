@@ -4,8 +4,11 @@
 
 pub mod config;
 pub mod debug_ui;
+mod geometry;
+mod line_renderer;
 mod renderer;
 mod runner;
+mod shader_system;
 mod window;
 
 pub use config::{AppConfig, WindowConfig};

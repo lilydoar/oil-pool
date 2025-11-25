@@ -190,7 +190,8 @@ impl Renderer {
             });
 
         // Draw simulation first (to offscreen texture)
-        self.sim_renderer.draw(&mut encoder, world);
+        self.sim_renderer
+            .draw(&mut encoder, &self.device, &self.queue, world);
 
         // Prepare egui
         let raw_input = self.egui_state.take_egui_input(window);

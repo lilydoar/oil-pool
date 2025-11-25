@@ -2,9 +2,11 @@
 //!
 //! Handles game state, logic, physics, and entities.
 
-// pub mod tictactoe;
+pub mod tictactoe;
 
 use std::any::Any;
+
+pub use tictactoe::TicTacToeSimulation;
 
 /// Trait that all game simulations must implement
 ///
@@ -169,13 +171,20 @@ impl World {
     }
 
     /// Gets a reference to a specific simulation by name
-    pub fn get_simulation(&self, name: &str) -> Option<&Box<dyn Simulation>> {
-        self.simulations.iter().find(|s| s.name() == name)
+    pub fn get_simulation(&self, name: &str) -> Option<&dyn Simulation> {
+        self.simulations
+            .iter()
+            .find(|s| s.name() == name)
+            .map(|b| b.as_ref())
     }
 
     /// Gets a mutable reference to a specific simulation by name
-    pub fn get_simulation_mut(&mut self, name: &str) -> Option<&mut Box<dyn Simulation>> {
-        self.simulations.iter_mut().find(|s| s.name() == name)
+    pub fn get_simulation_mut(&mut self, name: &str) -> Option<&mut (dyn Simulation + '_)> {
+        if let Some(boxed) = self.simulations.iter_mut().find(|s| s.name() == name) {
+            Some(boxed.as_mut())
+        } else {
+            None
+        }
     }
 
     /// Gets a typed reference to a specific simulation
@@ -203,11 +212,21 @@ impl World {
             sim.reset();
         }
     }
+
+    /// Convenience method to get the TicTacToe simulation
+    pub fn tictactoe(&self) -> Option<&TicTacToeSimulation> {
+        self.get_simulation_typed::<TicTacToeSimulation>("tictactoe")
+    }
+
+    /// Convenience method to get a mutable reference to the TicTacToe simulation
+    pub fn tictactoe_mut(&mut self) -> Option<&mut TicTacToeSimulation> {
+        self.get_simulation_typed_mut::<TicTacToeSimulation>("tictactoe")
+    }
 }
 
 impl Default for World {
     fn default() -> Self {
-        Self {
+        let mut world = Self {
             tick_count: 0,
             sim_time: 0.0,
             time_scale: 1.0,
@@ -215,6 +234,11 @@ impl Default for World {
             paused: false,
             rng_seed: rand::random(),
             simulations: Vec::new(),
-        }
+        };
+
+        // Add TicTacToe simulation by default
+        world.add_simulation(Box::new(TicTacToeSimulation::new()));
+
+        world
     }
 }

@@ -22,6 +22,9 @@ pub trait Shader: Send + Sync {
 
     /// Ends the frame, allowing cleanup
     fn end_frame(&mut self);
+
+    /// Allows downcasting to concrete types
+    fn as_any_mut(&mut self) -> &mut dyn std::any::Any;
 }
 
 /// Registry for managing shaders
@@ -56,8 +59,12 @@ impl ShaderRegistry {
     }
 
     /// Gets a mutable reference to a shader by name
-    pub fn get_mut(&mut self, name: &str) -> Option<&mut dyn Shader> {
-        self.shaders.get_mut(name).map(|s| s.as_mut())
+    pub fn get_mut(&mut self, name: &str) -> Option<&mut (dyn Shader + '_)> {
+        if let Some(shader) = self.shaders.get_mut(name) {
+            Some(shader.as_mut())
+        } else {
+            None
+        }
     }
 
     /// Begins a new frame for all shaders
