@@ -5,6 +5,7 @@
 pub mod config;
 pub mod debug_ui;
 mod geometry;
+pub mod input;
 mod line_renderer;
 mod renderer;
 mod runner;

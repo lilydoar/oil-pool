@@ -4,6 +4,13 @@ use std::time::Instant;
 
 use sysinfo::System;
 
+/// Mouse debug information
+pub struct MouseDebugInfo<'a> {
+    pub cursor_pos: Option<winit::dpi::PhysicalPosition<f64>>,
+    pub viewport_rect: Option<egui::Rect>,
+    pub last_click_info: &'a Option<String>,
+}
+
 /// Debug UI state for toggling different panels
 #[derive(Debug, Clone)]
 pub struct DebugUIState {
@@ -13,6 +20,7 @@ pub struct DebugUIState {
     pub show_debug_info: bool,
     pub show_system_info: bool,
     pub show_mouse_info: bool,
+    pub show_input_system: bool,
     frame_times: Vec<f32>,
     last_frame_time: Instant,
 }
@@ -26,6 +34,7 @@ impl Default for DebugUIState {
             show_debug_info: true,
             show_system_info: true,
             show_mouse_info: true,
+            show_input_system: true,
             frame_times: Vec::with_capacity(100),
             last_frame_time: Instant::now(),
         }
@@ -71,9 +80,8 @@ impl DebugUIState {
         ctx: &egui::Context,
         world: &crate::sim::World,
         surface_config: &wgpu::SurfaceConfiguration,
-        cursor_pos: Option<winit::dpi::PhysicalPosition<f64>>,
-        viewport_rect: Option<egui::Rect>,
-        last_click_info: &Option<String>,
+        mouse_info: MouseDebugInfo,
+        input_context: &crate::app::input::InputContext,
     ) {
         // Only show debug window if enabled
         if !self.show_window {
@@ -96,6 +104,7 @@ impl DebugUIState {
                 // Toggle checkboxes
                 ui.checkbox(&mut self.show_fps, "FPS");
                 ui.checkbox(&mut self.show_mouse_info, "Mouse Info");
+                ui.checkbox(&mut self.show_input_system, "Input System");
                 ui.checkbox(&mut self.show_world_state, "World State");
                 ui.checkbox(&mut self.show_debug_info, "Renderer Info");
                 ui.checkbox(&mut self.show_system_info, "System Info");
@@ -125,7 +134,7 @@ impl DebugUIState {
                             ui.heading("Mouse Info");
 
                             // Cursor position (window coordinates)
-                            if let Some(pos) = cursor_pos {
+                            if let Some(pos) = mouse_info.cursor_pos {
                                 ui.label(format!("Window pos: ({:.1}, {:.1})", pos.x, pos.y));
                             } else {
                                 ui.label("Window pos: None");
@@ -148,7 +157,7 @@ impl DebugUIState {
                             ui.label(format!("Middle down: {}", pointer.middle_down()));
 
                             // Viewport info
-                            if let Some(rect) = viewport_rect {
+                            if let Some(rect) = mouse_info.viewport_rect {
                                 ui.label(format!(
                                     "Viewport: ({:.0}, {:.0}) -> ({:.0}, {:.0})",
                                     rect.left(),
@@ -166,10 +175,79 @@ impl DebugUIState {
                             }
 
                             // Last click info
-                            if let Some(info) = last_click_info {
+                            if let Some(info) = mouse_info.last_click_info {
                                 ui.label(format!("Last click: {}", info));
                             } else {
                                 ui.label("Last click: None");
+                            }
+
+                            ui.separator();
+                        }
+
+                        // Input System Section
+                        if self.show_input_system {
+                            ui.heading("Input System");
+
+                            // Raw input state
+                            let input_state = input_context.state();
+                            ui.label("=== Raw Input State ===");
+
+                            // Mouse buttons
+                            ui.label(format!("Left button: {:?}", input_state.mouse.buttons.left));
+                            ui.label(format!(
+                                "Right button: {:?}",
+                                input_state.mouse.buttons.right
+                            ));
+                            ui.label(format!(
+                                "Middle button: {:?}",
+                                input_state.mouse.buttons.middle
+                            ));
+
+                            // Scroll
+                            if input_state.mouse.scroll_delta != [0.0, 0.0] {
+                                ui.label(format!(
+                                    "Scroll delta: ({:.1}, {:.1})",
+                                    input_state.mouse.scroll_delta[0],
+                                    input_state.mouse.scroll_delta[1]
+                                ));
+                            }
+
+                            ui.add_space(5.0);
+
+                            // Events generated this frame
+                            ui.label("=== Events This Frame ===");
+                            let events = input_context.debug_last_events();
+                            if events.is_empty() {
+                                ui.label("No events");
+                            } else {
+                                for event in events {
+                                    ui.label(event);
+                                }
+                            }
+
+                            ui.add_space(5.0);
+
+                            // Viewports
+                            ui.label("=== Viewports ===");
+                            let viewports = input_context.debug_viewports();
+                            if viewports.is_empty() {
+                                ui.label("No viewports registered");
+                            } else {
+                                for (id, rect, name) in viewports {
+                                    ui.label(format!(
+                                        "{:?} '{}': ({:.0},{:.0}) {}x{}",
+                                        id, name, rect.x, rect.y, rect.width, rect.height
+                                    ));
+                                }
+                            }
+
+                            ui.add_space(5.0);
+
+                            // Handlers
+                            ui.label("=== Handlers ===");
+                            let handlers = input_context.debug_handlers();
+                            for (name, priority) in handlers {
+                                ui.label(format!("'{}' priority={}", name, priority));
                             }
 
                             ui.separator();
