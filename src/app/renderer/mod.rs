@@ -123,12 +123,8 @@ impl Renderer {
         );
 
         // Initialize sim renderer
-        let sim_renderer = SimRenderer::new(
-            &device,
-            &mut egui_renderer,
-            config.width,
-            config.height,
-        );
+        let sim_renderer =
+            SimRenderer::new(&device, &mut egui_renderer, config.width, config.height);
 
         info!("egui initialized successfully");
 
@@ -156,7 +152,7 @@ impl Renderer {
             self.config.width = new_size.width;
             self.config.height = new_size.height;
             self.surface.configure(&self.device, &self.config);
-            
+
             // Resize sim renderer (currently matches window size)
             self.sim_renderer.resize(
                 &self.device,

@@ -1,8 +1,8 @@
-use wgpu;
+use super::viewport::Viewport;
+use crate::sim::World;
 use egui;
 use egui_wgpu;
-use crate::sim::World;
-use super::viewport::Viewport;
+use wgpu;
 
 /// Renderer for the simulation view
 pub struct SimRenderer {
@@ -19,9 +19,7 @@ impl SimRenderer {
     ) -> Self {
         let viewport = Viewport::new(device, egui_renderer, width, height, "Sim Texture");
 
-        Self {
-            viewport,
-        }
+        Self { viewport }
     }
 
     /// Returns the texture ID for egui

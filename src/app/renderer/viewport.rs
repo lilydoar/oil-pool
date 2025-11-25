@@ -1,6 +1,6 @@
-use wgpu;
 use egui;
 use egui_wgpu;
+use wgpu;
 
 /// A viewport represents a render target texture that can be displayed in egui
 pub struct Viewport {
@@ -29,13 +29,10 @@ impl Viewport {
     ) -> Self {
         let label = label.into();
         let (texture, view) = Self::create_texture(device, width, height, &label);
-        
+
         // Register texture with egui
-        let texture_id = egui_renderer.register_native_texture(
-            device,
-            &view,
-            wgpu::FilterMode::Linear,
-        );
+        let texture_id =
+            egui_renderer.register_native_texture(device, &view, wgpu::FilterMode::Linear);
 
         Self {
             texture_id,
@@ -58,7 +55,7 @@ impl Viewport {
         if self.width == width && self.height == height {
             return;
         }
-        
+
         // Ensure non-zero dimensions
         let width = width.max(1);
         let height = height.max(1);
@@ -75,11 +72,8 @@ impl Viewport {
         self.view = view;
 
         // Register new texture with egui
-        self.texture_id = egui_renderer.register_native_texture(
-            device,
-            &self.view,
-            wgpu::FilterMode::Linear,
-        );
+        self.texture_id =
+            egui_renderer.register_native_texture(device, &self.view, wgpu::FilterMode::Linear);
     }
 
     /// Creates the wgpu texture and view

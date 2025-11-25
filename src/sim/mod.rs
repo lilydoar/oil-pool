@@ -2,6 +2,41 @@
 //!
 //! Handles game state, logic, physics, and entities.
 
+// pub mod tictactoe;
+
+use std::any::Any;
+
+/// Trait that all game simulations must implement
+///
+/// This allows the World to contain and manage multiple different game systems
+/// in a pluggable way. Each simulation is responsible for its own state and logic.
+pub trait Simulation {
+    /// Updates the simulation by one tick
+    ///
+    /// # Arguments
+    /// * `delta_time` - Time elapsed since last tick in seconds
+    fn tick(&mut self, delta_time: f32);
+
+    /// Resets the simulation to its initial state
+    fn reset(&mut self);
+
+    /// Returns the name/identifier of this simulation
+    fn name(&self) -> &str;
+
+    /// Returns true if the simulation is currently active
+    fn is_active(&self) -> bool {
+        true
+    }
+
+    /// Allows downcasting to concrete types for specific operations
+    ///
+    /// This enables type-safe access to simulation-specific methods
+    fn as_any(&self) -> &dyn Any;
+
+    /// Mutable version of as_any for type-safe mutable access
+    fn as_any_mut(&mut self) -> &mut dyn Any;
+}
+
 /// Game world state
 pub struct World {
     /// Total number of simulation ticks elapsed
@@ -16,6 +51,8 @@ pub struct World {
     paused: bool,
     /// Random number generator seed
     rng_seed: u64,
+    /// Collection of all active simulations
+    simulations: Vec<Box<dyn Simulation>>,
 }
 
 impl World {
@@ -53,7 +90,12 @@ impl World {
         self.sim_time += scaled_delta as f64;
         self.timestep_accumulator += scaled_delta;
 
-        // TODO: Implement simulation logic
+        // Update all active simulations
+        for sim in &mut self.simulations {
+            if sim.is_active() {
+                sim.tick(scaled_delta);
+            }
+        }
     }
 
     /// Returns the current tick count
@@ -110,6 +152,57 @@ impl World {
     pub fn consume_timestep(&mut self, timestep: f32) {
         self.timestep_accumulator -= timestep;
     }
+
+    /// Adds a simulation to the world
+    pub fn add_simulation(&mut self, sim: Box<dyn Simulation>) {
+        self.simulations.push(sim);
+    }
+
+    /// Returns a reference to all simulations
+    pub fn simulations(&self) -> &[Box<dyn Simulation>] {
+        &self.simulations
+    }
+
+    /// Returns a mutable reference to all simulations
+    pub fn simulations_mut(&mut self) -> &mut [Box<dyn Simulation>] {
+        &mut self.simulations
+    }
+
+    /// Gets a reference to a specific simulation by name
+    pub fn get_simulation(&self, name: &str) -> Option<&Box<dyn Simulation>> {
+        self.simulations.iter().find(|s| s.name() == name)
+    }
+
+    /// Gets a mutable reference to a specific simulation by name
+    pub fn get_simulation_mut(&mut self, name: &str) -> Option<&mut Box<dyn Simulation>> {
+        self.simulations.iter_mut().find(|s| s.name() == name)
+    }
+
+    /// Gets a typed reference to a specific simulation
+    ///
+    /// # Example
+    /// ```ignore
+    /// if let Some(ttt) = world.get_simulation_typed::<TicTacToe>("tictactoe") {
+    ///     // Use TicTacToe-specific methods
+    /// }
+    /// ```
+    pub fn get_simulation_typed<T: 'static>(&self, name: &str) -> Option<&T> {
+        self.get_simulation(name)
+            .and_then(|s| s.as_any().downcast_ref::<T>())
+    }
+
+    /// Gets a mutable typed reference to a specific simulation
+    pub fn get_simulation_typed_mut<T: 'static>(&mut self, name: &str) -> Option<&mut T> {
+        self.get_simulation_mut(name)
+            .and_then(|s| s.as_any_mut().downcast_mut::<T>())
+    }
+
+    /// Resets all simulations to their initial state
+    pub fn reset_all_simulations(&mut self) {
+        for sim in &mut self.simulations {
+            sim.reset();
+        }
+    }
 }
 
 impl Default for World {
@@ -121,6 +214,7 @@ impl Default for World {
             timestep_accumulator: 0.0,
             paused: false,
             rng_seed: rand::random(),
+            simulations: Vec::new(),
         }
     }
 }
