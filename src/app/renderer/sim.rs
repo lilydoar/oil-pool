@@ -1,3 +1,4 @@
+use super::context::RenderContext;
 use super::viewport::Viewport;
 use crate::app::{
     ellipse_renderer::EllipseRenderer, geometry, line_renderer::LineRenderer,
@@ -24,6 +25,7 @@ const LEAF_COLORS: [[f32; 3]; 4] = [
 pub struct SimRenderer {
     viewport: Viewport,
     shader_registry: ShaderRegistry,
+    render_context: RenderContext,
     width: u32,
     height: u32,
 }
@@ -56,9 +58,13 @@ impl SimRenderer {
         };
         shader_registry.init_all(device, &config);
 
+        // Initialize rendering context
+        let render_context = RenderContext::new(width, height);
+
         Self {
             viewport,
             shader_registry,
+            render_context,
             width,
             height,
         }
@@ -67,6 +73,11 @@ impl SimRenderer {
     /// Returns the texture ID for egui
     pub fn texture_id(&self) -> egui::TextureId {
         self.viewport.texture_id
+    }
+
+    /// Returns a mutable reference to the rendering context for command building
+    pub fn commands(&mut self) -> &mut RenderContext {
+        &mut self.render_context
     }
 
     /// Resizes the render texture
@@ -80,6 +91,9 @@ impl SimRenderer {
         self.viewport.resize(device, egui_renderer, width, height);
         self.width = width;
         self.height = height;
+
+        // Recreate render context with new size
+        self.render_context = RenderContext::new(width, height);
 
         // Reinitialize shaders with new size
         let config = wgpu::SurfaceConfiguration {
@@ -142,6 +156,9 @@ impl SimRenderer {
         queue: &wgpu::Queue,
         world: &World,
     ) {
+        // Clear command buffer for new frame
+        self.render_context.clear();
+
         // Create board layout
         let layout = geometry::BoardLayout::centered(self.width as f32, self.height as f32);
 
@@ -154,16 +171,18 @@ impl SimRenderer {
         // Get leaf simulation
         let leaf_sim = world.leaf();
 
-        // RENDER TICTACTOE BOARD (background layer)
-        if let Some(line_renderer) = self
-            .shader_registry
-            .get_mut("line")
-            .and_then(|r| r.as_any_mut().downcast_mut::<LineRenderer>())
+        // RENDER TICTACTOE BOARD (background layer) - Using new command API
         {
-            // Generate board grid lines
-            for line in geometry::generate_board_grid(&layout) {
-                line_renderer.draw_line(line.from, line.to, line.thickness);
-            }
+            // Board grid lines (batch)
+            let grid_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_board_grid(&layout)
+                .into_iter()
+                .map(|line| (line.from, line.to))
+                .collect();
+
+            self.commands()
+                .lines(&grid_lines)
+                .thickness(layout.line_thickness)
+                .depth(0.0);
 
             // Generate pieces
             let board = tictactoe.board();
@@ -171,14 +190,28 @@ impl SimRenderer {
                 for (col, &tile) in row_tiles.iter().enumerate() {
                     match tile {
                         Tile::X => {
-                            for line in geometry::generate_x(&layout, row, col) {
-                                line_renderer.draw_line(line.from, line.to, line.thickness);
-                            }
+                            let x_lines: Vec<([f32; 2], [f32; 2])> =
+                                geometry::generate_x(&layout, row, col)
+                                    .into_iter()
+                                    .map(|line| (line.from, line.to))
+                                    .collect();
+
+                            self.commands()
+                                .lines(&x_lines)
+                                .thickness(layout.line_thickness)
+                                .depth(0.1);
                         }
                         Tile::O => {
-                            for line in geometry::generate_o(&layout, row, col) {
-                                line_renderer.draw_line(line.from, line.to, line.thickness);
-                            }
+                            let o_lines: Vec<([f32; 2], [f32; 2])> =
+                                geometry::generate_o(&layout, row, col)
+                                    .into_iter()
+                                    .map(|line| (line.from, line.to))
+                                    .collect();
+
+                            self.commands()
+                                .lines(&o_lines)
+                                .thickness(layout.line_thickness)
+                                .depth(0.1);
                         }
                         Tile::Empty => {}
                     }
@@ -190,8 +223,8 @@ impl SimRenderer {
             let x_score = tictactoe.wins(Player::X);
             let o_score = tictactoe.wins(Player::O);
 
-            // X score on left
-            for line in geometry::generate_number(
+            // X score on left (batch)
+            let x_score_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_number(
                 x_score,
                 layout.center_x - 80.0,
                 score_y,
@@ -199,12 +232,18 @@ impl SimRenderer {
                 50.0,
                 10.0,
                 layout.line_thickness,
-            ) {
-                line_renderer.draw_line(line.from, line.to, line.thickness);
-            }
+            )
+            .into_iter()
+            .map(|line| (line.from, line.to))
+            .collect();
 
-            // O score on right
-            for line in geometry::generate_number(
+            self.commands()
+                .lines(&x_score_lines)
+                .thickness(layout.line_thickness)
+                .depth(0.2);
+
+            // O score on right (batch)
+            let o_score_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_number(
                 o_score,
                 layout.center_x + 50.0,
                 score_y,
@@ -212,18 +251,19 @@ impl SimRenderer {
                 50.0,
                 10.0,
                 layout.line_thickness,
-            ) {
-                line_renderer.draw_line(line.from, line.to, line.thickness);
-            }
+            )
+            .into_iter()
+            .map(|line| (line.from, line.to))
+            .collect();
+
+            self.commands()
+                .lines(&o_score_lines)
+                .thickness(layout.line_thickness)
+                .depth(0.2);
         }
 
-        // RENDER LEAVES (foreground layer - rendered on top of board)
-        if let Some(ellipse_renderer) = self
-            .shader_registry
-            .get_mut("ellipse")
-            .and_then(|r| r.as_any_mut().downcast_mut::<EllipseRenderer>())
-            && let Some(leaf_sim) = leaf_sim
-        {
+        // RENDER LEAVES (foreground layer - rendered on top of board) - Using new command API
+        if let Some(leaf_sim) = leaf_sim {
             for leaf in leaf_sim.leaves() {
                 // Transform leaf position from world space to screen space
                 let screen_position = layout.world_to_screen(leaf.position);
@@ -253,16 +293,18 @@ impl SimRenderer {
                     screen_position[1] - focus_offset_y,
                 ];
 
-                ellipse_renderer.draw_ellipse(crate::app::ellipse_renderer::Ellipse {
-                    center: adjusted_center,
-                    radius_x: current_size_x,
-                    radius_y: current_size_y,
-                    rotation: leaf.rotation,
-                    color: LEAF_COLORS[leaf.color_variant as usize % 4],
-                    alpha: current_alpha,
-                });
+                // Draw leaf using command API
+                self.commands()
+                    .ellipse(adjusted_center, current_size_x, current_size_y)
+                    .rotation(leaf.rotation)
+                    .color(LEAF_COLORS[leaf.color_variant as usize % 4])
+                    .alpha(current_alpha)
+                    .depth(0.5);
             }
         }
+
+        // Submit command buffer to shader registry (dispatches commands to shaders)
+        self.render_context.submit(&mut self.shader_registry);
 
         // Prepare shaders
         self.shader_registry.begin_frame(device, queue);

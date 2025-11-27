@@ -10,7 +10,7 @@ use wgpu::{
 
 use super::shader_system::Shader;
 
-/// WGSL shader code for line rendering
+/// WGSL shader code for line rendering with viewport support
 const LINE_SHADER: &str = r#"
 struct VertexInput {
     @location(0) position: vec2<f32>,
@@ -24,6 +24,8 @@ struct VertexOutput {
 
 struct Uniforms {
     screen_size: vec2<f32>,
+    coord_min: vec2<f32>,
+    coord_max: vec2<f32>,
 }
 
 @group(0) @binding(0)
@@ -33,13 +35,15 @@ var<uniform> uniforms: Uniforms;
 fn vs_main(in: VertexInput) -> VertexOutput {
     var out: VertexOutput;
 
-    // Convert from screen coordinates to clip space
-    // Screen coordinates: (0, 0) at top-left, (width, height) at bottom-right
-    // Clip space: (-1, -1) at bottom-left, (1, 1) at top-right
-    let clip_x = (in.position.x / uniforms.screen_size.x) * 2.0 - 1.0;
-    let clip_y = 1.0 - (in.position.y / uniforms.screen_size.y) * 2.0;
+    // Input position is in logical coordinate space
+    // Map from logical coords (coord_min..coord_max) to NDC (-1..1)
+    let coord_range = uniforms.coord_max - uniforms.coord_min;
+    let ndc_x = ((in.position.x - uniforms.coord_min.x) / coord_range.x) * 2.0 - 1.0;
 
-    out.clip_position = vec4<f32>(clip_x, clip_y, 0.0, 1.0);
+    // Y-axis: flip for screen coordinates (top = -1, bottom = 1 in NDC)
+    let ndc_y = 1.0 - ((in.position.y - uniforms.coord_min.y) / coord_range.y) * 2.0;
+
+    out.clip_position = vec4<f32>(ndc_x, ndc_y, 0.0, 1.0);
     out.color = in.color;
 
     return out;
@@ -72,11 +76,13 @@ impl Vertex {
     }
 }
 
-/// Uniform buffer for screen size
+/// Uniform buffer for viewport transforms
 #[repr(C)]
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Uniforms {
     screen_size: [f32; 2],
+    coord_min: [f32; 2],
+    coord_max: [f32; 2],
 }
 
 /// Line segment definition
@@ -198,11 +204,13 @@ impl LineRenderer {
         );
     }
 
-    /// Updates the uniform buffer with current screen size
+    /// Updates the uniform buffer with current screen size and viewport coords
     fn update_uniform_buffer(&mut self, queue: &Queue) {
         if let Some(buffer) = &self.uniform_buffer {
             let uniforms = Uniforms {
                 screen_size: self.screen_size,
+                coord_min: [0.0, 0.0],
+                coord_max: self.screen_size,
             };
             queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[uniforms]));
         }
@@ -223,11 +231,14 @@ impl Shader for LineRenderer {
     fn init(&mut self, device: &Device, config: &SurfaceConfiguration) {
         self.screen_size = [config.width as f32, config.height as f32];
 
-        // Create uniform buffer
+        // Create uniform buffer with viewport support
+        // Default: coord_min = [0,0], coord_max = screen_size (backward compatible)
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Line Uniform Buffer"),
             contents: bytemuck::cast_slice(&[Uniforms {
                 screen_size: self.screen_size,
+                coord_min: [0.0, 0.0],
+                coord_max: self.screen_size,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });

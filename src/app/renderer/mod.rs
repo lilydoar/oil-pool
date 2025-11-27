@@ -9,6 +9,8 @@ use wgpu::{Device, Queue, Surface, SurfaceConfiguration};
 use winit::event::WindowEvent;
 use winit::window::Window;
 
+pub mod command;
+pub mod context;
 pub mod sim;
 pub mod viewport;
 use sim::SimRenderer;
