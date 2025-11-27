@@ -1,12 +1,24 @@
 use super::viewport::Viewport;
-use crate::app::{geometry, line_renderer::LineRenderer, shader_system::ShaderRegistry};
+use crate::app::{
+    ellipse_renderer::EllipseRenderer, geometry, line_renderer::LineRenderer,
+    shader_system::ShaderRegistry,
+};
 use crate::sim::{
     World,
+    leaf::Vine,
     tictactoe::{Player, Tile},
 };
 use egui;
 use egui_wgpu;
 use wgpu;
+
+/// Green color palette for leaves
+const LEAF_COLORS: [[f32; 3]; 4] = [
+    [0.2, 0.6, 0.3],   // Medium green
+    [0.15, 0.7, 0.35], // Bright green
+    [0.25, 0.5, 0.25], // Dark green
+    [0.3, 0.65, 0.4],  // Light green
+];
 
 /// Renderer for the simulation view
 pub struct SimRenderer {
@@ -28,7 +40,8 @@ impl SimRenderer {
 
         // Initialize shader system
         let mut shader_registry = ShaderRegistry::new();
-        shader_registry.register(Box::new(LineRenderer::new()));
+        shader_registry.register(Box::new(EllipseRenderer::new())); // Leaves (background)
+        shader_registry.register(Box::new(LineRenderer::new())); // Board (foreground)
 
         // Get surface config from viewport
         let config = wgpu::SurfaceConfiguration {
@@ -82,6 +95,31 @@ impl SimRenderer {
         self.shader_registry.init_all(device, &config);
     }
 
+    /// Initialize vines in leaf simulation (call once before drawing)
+    pub fn init_vines(&mut self, world: &mut World) {
+        let layout = geometry::BoardLayout::centered(self.width as f32, self.height as f32);
+
+        if let Some(leaf_sim) = world.leaf_mut()
+            && leaf_sim.vines().is_empty()
+        {
+            // Add horizontal vines (4 lines for tictactoe grid)
+            for i in 0..4 {
+                let y = layout.center_y - (layout.cell_size * 1.5) + (i as f32 * layout.cell_size);
+                let start = [layout.center_x - layout.cell_size * 1.5, y];
+                let end = [layout.center_x + layout.cell_size * 1.5, y];
+                leaf_sim.add_vine(Vine::new(start, end));
+            }
+
+            // Add vertical vines
+            for i in 0..4 {
+                let x = layout.center_x - (layout.cell_size * 1.5) + (i as f32 * layout.cell_size);
+                let start = [x, layout.center_y - layout.cell_size * 1.5];
+                let end = [x, layout.center_y + layout.cell_size * 1.5];
+                leaf_sim.add_vine(Vine::new(start, end));
+            }
+        }
+    }
+
     /// Draws the simulation to the texture
     pub fn draw(
         &mut self,
@@ -90,18 +128,47 @@ impl SimRenderer {
         queue: &wgpu::Queue,
         world: &World,
     ) {
+        // Create board layout
+        let layout = geometry::BoardLayout::centered(self.width as f32, self.height as f32);
+
         // Get tic-tac-toe simulation
         let tictactoe = match world.tictactoe() {
             Some(ttt) => ttt,
             None => return, // No tic-tac-toe sim, nothing to render
         };
 
-        // Create board layout
-        let layout = geometry::BoardLayout::centered(self.width as f32, self.height as f32);
+        // Get leaf simulation
+        let leaf_sim = world.leaf();
 
-        // Get line renderer
-        if let Some(line_renderer) = self.shader_registry.get_mut("line")
-            && let Some(line_renderer) = line_renderer.as_any_mut().downcast_mut::<LineRenderer>()
+        // RENDER LEAVES FIRST (background layer)
+        if let Some(ellipse_renderer) = self
+            .shader_registry
+            .get_mut("ellipse")
+            .and_then(|r| r.as_any_mut().downcast_mut::<EllipseRenderer>())
+            && let Some(leaf_sim) = leaf_sim
+        {
+            for leaf in leaf_sim.leaves() {
+                // Scale size and alpha by growth (0.0 = invisible, 1.0 = full)
+                let current_size_x = leaf.size * leaf.growth;
+                let current_size_y = current_size_x * leaf.aspect;
+                let current_alpha = leaf.growth * 0.7; // Max 70% opacity
+
+                ellipse_renderer.draw_ellipse(crate::app::ellipse_renderer::Ellipse {
+                    center: leaf.position,
+                    radius_x: current_size_x,
+                    radius_y: current_size_y,
+                    rotation: leaf.rotation,
+                    color: LEAF_COLORS[leaf.color_variant as usize % 4],
+                    alpha: current_alpha,
+                });
+            }
+        }
+
+        // RENDER TICTACTOE BOARD (foreground layer)
+        if let Some(line_renderer) = self
+            .shader_registry
+            .get_mut("line")
+            .and_then(|r| r.as_any_mut().downcast_mut::<LineRenderer>())
         {
             // Generate board grid lines
             for line in geometry::generate_board_grid(&layout) {

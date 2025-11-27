@@ -31,6 +31,11 @@ impl Renderer {
         &self.config
     }
 
+    /// Initialize vines in the leaf simulation (call once after world is created)
+    pub fn init_leaf_vines(&mut self, world: &mut World) {
+        self.sim_renderer.init_vines(world);
+    }
+
     /// Creates a new renderer for the given window
     pub async fn new(window: Arc<Window>) -> anyhow::Result<Self> {
         info!("Initializing wgpu renderer");

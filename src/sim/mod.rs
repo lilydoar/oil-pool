@@ -2,10 +2,12 @@
 //!
 //! Handles game state, logic, physics, and entities.
 
+pub mod leaf;
 pub mod tictactoe;
 
 use std::any::Any;
 
+pub use leaf::LeafSimulation;
 pub use tictactoe::TicTacToeSimulation;
 
 /// Trait that all game simulations must implement
@@ -222,6 +224,16 @@ impl World {
     pub fn tictactoe_mut(&mut self) -> Option<&mut TicTacToeSimulation> {
         self.get_simulation_typed_mut::<TicTacToeSimulation>("tictactoe")
     }
+
+    /// Convenience method to get the Leaf simulation
+    pub fn leaf(&self) -> Option<&LeafSimulation> {
+        self.get_simulation_typed::<LeafSimulation>("leaf")
+    }
+
+    /// Convenience method to get a mutable reference to the Leaf simulation
+    pub fn leaf_mut(&mut self) -> Option<&mut LeafSimulation> {
+        self.get_simulation_typed_mut::<LeafSimulation>("leaf")
+    }
 }
 
 impl Default for World {
@@ -238,6 +250,9 @@ impl Default for World {
 
         // Add TicTacToe simulation by default
         world.add_simulation(Box::new(TicTacToeSimulation::new()));
+
+        // Add Leaf simulation
+        world.add_simulation(Box::new(LeafSimulation::new()));
 
         world
     }

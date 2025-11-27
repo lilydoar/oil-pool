@@ -292,6 +292,9 @@ impl ApplicationHandler for App {
             }
             WindowEvent::RedrawRequested => {
                 if let (Some(renderer), Some(window)) = (&mut self.renderer, &self.window) {
+                    // Initialize leaf vines if needed (mutable borrow of world)
+                    renderer.init_leaf_vines(&mut self.world);
+
                     let debug_ui = &mut self.debug_ui;
                     let world = &self.world;
                     let config = renderer.config().clone();
