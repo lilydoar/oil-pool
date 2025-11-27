@@ -69,22 +69,22 @@ pub struct Leaf {
 /// Configuration for leaf simulation
 #[derive(Debug, Clone)]
 pub struct LeafConfig {
-    pub spawn_rate: f32,
-    pub growth_rate: f32,
-    pub base_size: f32,
-    pub size_variation: f32,
-    pub max_offset: f32,
-    pub noise_seed: u32,
+    pub spawn_rate: f32,     // Leaves per second
+    pub growth_rate: f32,    // Growth units per second (0.0 → 1.0)
+    pub base_size: f32,      // Pixels (used as rendering radius)
+    pub size_variation: f32, // Fraction (0.0-1.0)
+    pub max_offset: f32,     // World space units (perpendicular distance from vine)
+    pub noise_seed: u32,     // Seed for Perlin noise
 }
 
 impl Default for LeafConfig {
     fn default() -> Self {
         Self {
             spawn_rate: 2.0,
-            growth_rate: 1.0,
-            base_size: 8.0,
+            growth_rate: 2.5, // Increased from 1.0 (2.5x faster growth)
+            base_size: 18.0,  // Pixels (rendering radius)
             size_variation: 0.3,
-            max_offset: 20.0,
+            max_offset: 0.05, // Decreased from 0.15 (3x tighter to vines)
             noise_seed: 42,
         }
     }
@@ -189,8 +189,8 @@ impl LeafSimulation {
     fn sample_vine_position(&self, vine_idx: usize) -> f32 {
         let time_factor = self.spawn_counter as f64 * 0.1;
         let noise_val = self.noise.get([vine_idx as f64, time_factor]);
-        // Map [-1, 1] → [0.1, 0.9]
-        (noise_val as f32 + 1.0) * 0.4 + 0.1
+        // Map [-1, 1] → [0.0, 1.0] to use full vine length
+        (noise_val as f32 + 1.0) * 0.5
     }
 
     fn sample_perpendicular_offset(&self, vine_idx: usize, vine_pos: f32) -> f32 {
@@ -201,7 +201,8 @@ impl LeafSimulation {
     }
 
     fn sample_rotation(&mut self, base_angle: f32) -> f32 {
-        base_angle + self.rng.random_range(-0.3..0.3)
+        // Increased from ±0.3 rad (±17°) to ±0.65 rad (±37°) for more variation
+        base_angle + self.rng.random_range(-0.65..0.65)
     }
 
     fn generate_leaf(&mut self) -> Option<Leaf> {
@@ -629,5 +630,69 @@ mod tests {
             on_long_vine,
             sim.leaves().len()
         );
+    }
+
+    #[test]
+    fn test_leaves_near_vines() {
+        // Test that all leaves are placed within max_offset distance of their vines
+        let mut sim = LeafSimulation::with_config(LeafConfig {
+            spawn_rate: 10.0,
+            max_offset: 0.2, // World space units
+            ..Default::default()
+        });
+
+        // Add world-space vines (like tictactoe board)
+        sim.add_vine_line([-1.5, -0.5], [1.5, -0.5]); // Horizontal
+        sim.add_vine_line([-0.5, -1.5], [-0.5, 1.5]); // Vertical
+
+        // Spawn leaves
+        sim.tick(1.0);
+
+        assert!(!sim.leaves().is_empty(), "Should have spawned leaves");
+
+        // Check each leaf is within max_offset of at least one vine
+        for leaf in sim.leaves() {
+            let mut min_distance = f32::MAX;
+
+            for vine in sim.vines() {
+                // Calculate perpendicular distance from leaf to vine
+                let distance = distance_point_to_line_segment(leaf.position, vine.start, vine.end);
+                min_distance = min_distance.min(distance);
+            }
+
+            assert!(
+                min_distance <= sim.config.max_offset * 1.1, // 10% tolerance for floating point
+                "Leaf at {:?} is too far from vines: distance={:.3}, max_offset={:.3}",
+                leaf.position,
+                min_distance,
+                sim.config.max_offset
+            );
+        }
+    }
+
+    // Helper function to calculate perpendicular distance from point to line segment
+    fn distance_point_to_line_segment(point: [f32; 2], start: [f32; 2], end: [f32; 2]) -> f32 {
+        let dx = end[0] - start[0];
+        let dy = end[1] - start[1];
+        let length_sq = dx * dx + dy * dy;
+
+        if length_sq == 0.0 {
+            // Degenerate line segment (point)
+            let px = point[0] - start[0];
+            let py = point[1] - start[1];
+            return (px * px + py * py).sqrt();
+        }
+
+        // Project point onto line segment
+        let t = ((point[0] - start[0]) * dx + (point[1] - start[1]) * dy) / length_sq;
+        let t = t.clamp(0.0, 1.0);
+
+        let closest_x = start[0] + t * dx;
+        let closest_y = start[1] + t * dy;
+
+        let dist_x = point[0] - closest_x;
+        let dist_y = point[1] - closest_y;
+
+        (dist_x * dist_x + dist_y * dist_y).sqrt()
     }
 }

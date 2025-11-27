@@ -40,8 +40,8 @@ impl SimRenderer {
 
         // Initialize shader system
         let mut shader_registry = ShaderRegistry::new();
-        shader_registry.register(Box::new(EllipseRenderer::new())); // Leaves (background)
-        shader_registry.register(Box::new(LineRenderer::new())); // Board (foreground)
+        shader_registry.register(Box::new(LineRenderer::new())); // Board (background)
+        shader_registry.register(Box::new(EllipseRenderer::new())); // Leaves (foreground)
 
         // Get surface config from viewport
         let config = wgpu::SurfaceConfiguration {
@@ -96,27 +96,41 @@ impl SimRenderer {
     }
 
     /// Initialize vines in leaf simulation (call once before drawing)
+    /// Vines are stored in world coordinates (board-relative, centered at origin)
     pub fn init_vines(&mut self, world: &mut World) {
-        let layout = geometry::BoardLayout::centered(self.width as f32, self.height as f32);
+        use tracing::info;
 
         if let Some(leaf_sim) = world.leaf_mut()
             && leaf_sim.vines().is_empty()
         {
-            // Add horizontal vines (4 lines for tictactoe grid)
-            for i in 0..4 {
-                let y = layout.center_y - (layout.cell_size * 1.5) + (i as f32 * layout.cell_size);
-                let start = [layout.center_x - layout.cell_size * 1.5, y];
-                let end = [layout.center_x + layout.cell_size * 1.5, y];
+            info!("Initializing vines in world space (cell_size units, origin at board center)");
+
+            // Add horizontal vines (2 interior grid lines only, matching board grid)
+            // In world coords: -1.5 to +1.5 range represents the 3x3 board
+            for i in 1..3 {
+                let y = -1.5 + (i as f32); // i=1: -0.5, i=2: 0.5 (world coords)
+                let start = [-1.5, y];
+                let end = [1.5, y];
+                info!(
+                    "Adding horizontal vine {} at world y={}: {:?} → {:?}",
+                    i, y, start, end
+                );
                 leaf_sim.add_vine(Vine::new(start, end));
             }
 
-            // Add vertical vines
-            for i in 0..4 {
-                let x = layout.center_x - (layout.cell_size * 1.5) + (i as f32 * layout.cell_size);
-                let start = [x, layout.center_y - layout.cell_size * 1.5];
-                let end = [x, layout.center_y + layout.cell_size * 1.5];
+            // Add vertical vines (2 interior grid lines only, matching board grid)
+            for i in 1..3 {
+                let x = -1.5 + (i as f32); // i=1: -0.5, i=2: 0.5 (world coords)
+                let start = [x, -1.5];
+                let end = [x, 1.5];
+                info!(
+                    "Adding vertical vine {} at world x={}: {:?} → {:?}",
+                    i, x, start, end
+                );
                 leaf_sim.add_vine(Vine::new(start, end));
             }
+
+            info!("Vines initialized: {} total", leaf_sim.vines().len());
         }
     }
 
@@ -140,31 +154,7 @@ impl SimRenderer {
         // Get leaf simulation
         let leaf_sim = world.leaf();
 
-        // RENDER LEAVES FIRST (background layer)
-        if let Some(ellipse_renderer) = self
-            .shader_registry
-            .get_mut("ellipse")
-            .and_then(|r| r.as_any_mut().downcast_mut::<EllipseRenderer>())
-            && let Some(leaf_sim) = leaf_sim
-        {
-            for leaf in leaf_sim.leaves() {
-                // Scale size and alpha by growth (0.0 = invisible, 1.0 = full)
-                let current_size_x = leaf.size * leaf.growth;
-                let current_size_y = current_size_x * leaf.aspect;
-                let current_alpha = leaf.growth * 0.7; // Max 70% opacity
-
-                ellipse_renderer.draw_ellipse(crate::app::ellipse_renderer::Ellipse {
-                    center: leaf.position,
-                    radius_x: current_size_x,
-                    radius_y: current_size_y,
-                    rotation: leaf.rotation,
-                    color: LEAF_COLORS[leaf.color_variant as usize % 4],
-                    alpha: current_alpha,
-                });
-            }
-        }
-
-        // RENDER TICTACTOE BOARD (foreground layer)
+        // RENDER TICTACTOE BOARD (background layer)
         if let Some(line_renderer) = self
             .shader_registry
             .get_mut("line")
@@ -224,6 +214,53 @@ impl SimRenderer {
                 layout.line_thickness,
             ) {
                 line_renderer.draw_line(line.from, line.to, line.thickness);
+            }
+        }
+
+        // RENDER LEAVES (foreground layer - rendered on top of board)
+        if let Some(ellipse_renderer) = self
+            .shader_registry
+            .get_mut("ellipse")
+            .and_then(|r| r.as_any_mut().downcast_mut::<EllipseRenderer>())
+            && let Some(leaf_sim) = leaf_sim
+        {
+            for leaf in leaf_sim.leaves() {
+                // Transform leaf position from world space to screen space
+                let screen_position = layout.world_to_screen(leaf.position);
+
+                // Scale size and alpha by growth (0.0 = invisible, 1.0 = full)
+                let current_size_x = leaf.size * leaf.growth;
+                let current_size_y = current_size_x * leaf.aspect;
+                let current_alpha = leaf.growth; // Fully opaque when grown
+
+                // Calculate focus point for rotation (makes leaves appear to hang from a point)
+                // For an ellipse, focus is at distance c = sqrt(a² - b²) from center
+                let a_sq = current_size_x * current_size_x;
+                let b_sq = current_size_y * current_size_y;
+                let focus_distance = if a_sq > b_sq {
+                    (a_sq - b_sq).sqrt()
+                } else {
+                    0.0 // Degenerate case (circle)
+                };
+
+                // Focus offset rotated by leaf rotation angle
+                let focus_offset_x = focus_distance * leaf.rotation.cos();
+                let focus_offset_y = focus_distance * leaf.rotation.sin();
+
+                // Adjust center so rotation happens around focus point instead of center
+                let adjusted_center = [
+                    screen_position[0] - focus_offset_x,
+                    screen_position[1] - focus_offset_y,
+                ];
+
+                ellipse_renderer.draw_ellipse(crate::app::ellipse_renderer::Ellipse {
+                    center: adjusted_center,
+                    radius_x: current_size_x,
+                    radius_y: current_size_y,
+                    rotation: leaf.rotation,
+                    color: LEAF_COLORS[leaf.color_variant as usize % 4],
+                    alpha: current_alpha,
+                });
             }
         }
 

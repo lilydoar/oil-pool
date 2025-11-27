@@ -59,6 +59,25 @@ impl BoardLayout {
             None
         }
     }
+
+    /// Converts world coordinates to screen coordinates
+    /// World coordinates are board-relative, centered at (0, 0), in units of cell_size
+    /// Example: world position (0, -0.5) maps to the first horizontal grid line
+    pub fn world_to_screen(&self, world_pos: [f32; 2]) -> [f32; 2] {
+        [
+            self.center_x + world_pos[0] * self.cell_size,
+            self.center_y + world_pos[1] * self.cell_size,
+        ]
+    }
+
+    /// Converts screen coordinates to world coordinates
+    /// Inverse of world_to_screen()
+    pub fn screen_to_world(&self, screen_pos: [f32; 2]) -> [f32; 2] {
+        [
+            (screen_pos[0] - self.center_x) / self.cell_size,
+            (screen_pos[1] - self.center_y) / self.cell_size,
+        ]
+    }
 }
 
 /// Generates lines for the tic-tac-toe board grid
