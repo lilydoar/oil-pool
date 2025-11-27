@@ -1,4 +1,11 @@
 //! Rendering module for egui UI with wgpu backend
+//!
+//! ## Architecture
+//!
+//! - `command`: Trait-based command buffer system for declarative rendering
+//! - `context`: Rendering context with viewport transforms and builder APIs
+//! - `sim`: Simulation renderer that draws game state to offscreen texture
+//! - `viewport`: Viewport texture management for rendering to egui
 
 use std::sync::Arc;
 

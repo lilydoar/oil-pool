@@ -171,9 +171,9 @@ impl SimRenderer {
         // Get leaf simulation
         let leaf_sim = world.leaf();
 
-        // RENDER TICTACTOE BOARD (background layer) - Using new command API
+        // RENDER TICTACTOE BOARD (background layer)
         {
-            // Board grid lines (batch)
+            // Board grid lines
             let grid_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_board_grid(&layout)
                 .into_iter()
                 .map(|line| (line.from, line.to))
@@ -223,7 +223,7 @@ impl SimRenderer {
             let x_score = tictactoe.wins(Player::X);
             let o_score = tictactoe.wins(Player::O);
 
-            // X score on left (batch)
+            // X score on left
             let x_score_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_number(
                 x_score,
                 layout.center_x - 80.0,
@@ -242,7 +242,7 @@ impl SimRenderer {
                 .thickness(layout.line_thickness)
                 .depth(0.2);
 
-            // O score on right (batch)
+            // O score on right
             let o_score_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_number(
                 o_score,
                 layout.center_x + 50.0,
@@ -262,7 +262,7 @@ impl SimRenderer {
                 .depth(0.2);
         }
 
-        // RENDER LEAVES (foreground layer - rendered on top of board) - Using new command API
+        // RENDER LEAVES (foreground layer - rendered on top of board)
         if let Some(leaf_sim) = leaf_sim {
             for leaf in leaf_sim.leaves() {
                 // Transform leaf position from world space to screen space
@@ -293,7 +293,6 @@ impl SimRenderer {
                     screen_position[1] - focus_offset_y,
                 ];
 
-                // Draw leaf using command API
                 self.commands()
                     .ellipse(adjusted_center, current_size_x, current_size_y)
                     .rotation(leaf.rotation)
