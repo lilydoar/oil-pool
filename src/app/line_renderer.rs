@@ -152,6 +152,9 @@ pub struct LineRenderer {
     lines: Vec<Line>,
     vertex_count: u32,
     screen_size: [f32; 2],
+    // Current viewport bounds (defaults to screen coords)
+    coord_min: [f32; 2],
+    coord_max: [f32; 2],
 }
 
 impl LineRenderer {
@@ -166,7 +169,16 @@ impl LineRenderer {
             lines: Vec::new(),
             vertex_count: 0,
             screen_size: [800.0, 600.0],
+            coord_min: [0.0, 0.0],
+            coord_max: [800.0, 600.0],
         }
+    }
+
+    /// Sets the viewport coordinate bounds for GPU transforms
+    /// All subsequent draw calls will use these logical coordinates
+    pub fn set_viewport(&mut self, coord_min: [f32; 2], coord_max: [f32; 2]) {
+        self.coord_min = coord_min;
+        self.coord_max = coord_max;
     }
 
     /// Adds a line to be rendered
@@ -209,8 +221,8 @@ impl LineRenderer {
         if let Some(buffer) = &self.uniform_buffer {
             let uniforms = Uniforms {
                 screen_size: self.screen_size,
-                coord_min: [0.0, 0.0],
-                coord_max: self.screen_size,
+                coord_min: self.coord_min,
+                coord_max: self.coord_max,
             };
             queue.write_buffer(buffer, 0, bytemuck::cast_slice(&[uniforms]));
         }
@@ -231,14 +243,17 @@ impl Shader for LineRenderer {
     fn init(&mut self, device: &Device, config: &SurfaceConfiguration) {
         self.screen_size = [config.width as f32, config.height as f32];
 
+        // Initialize viewport to screen coords (backward compatible)
+        self.coord_min = [0.0, 0.0];
+        self.coord_max = self.screen_size;
+
         // Create uniform buffer with viewport support
-        // Default: coord_min = [0,0], coord_max = screen_size (backward compatible)
         let uniform_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
             label: Some("Line Uniform Buffer"),
             contents: bytemuck::cast_slice(&[Uniforms {
                 screen_size: self.screen_size,
-                coord_min: [0.0, 0.0],
-                coord_max: self.screen_size,
+                coord_min: self.coord_min,
+                coord_max: self.coord_max,
             }]),
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
         });

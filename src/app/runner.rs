@@ -12,6 +12,7 @@ use winit::window::{Window, WindowId};
 #[cfg(debug_assertions)]
 use winit::keyboard::{KeyCode, PhysicalKey};
 
+use super::config::AppConfig;
 use super::debug_ui::{DebugUIState, MouseDebugInfo};
 use super::input::{
     GameAction, GameInputHandler, InputCollector, InputContext, MouseButton as InputMouseButton,
@@ -19,7 +20,6 @@ use super::input::{
 };
 use super::renderer::Renderer;
 use super::window::window_attributes_from_config;
-use super::{config::AppConfig, geometry};
 use crate::sim::World;
 
 /// Main game application
@@ -129,24 +129,58 @@ impl App {
     fn process_viewport_click(
         &mut self,
         local_pos: [f32; 2],
-        config: &wgpu::SurfaceConfiguration,
+        _config: &wgpu::SurfaceConfiguration,
         viewport_rect: Option<Rect>,
     ) {
-        // Create board layout matching the one used in rendering
-        let layout = geometry::BoardLayout::centered(config.width as f32, config.height as f32);
+        use crate::app::renderer::context::{
+            Bounds as RendererBounds, Rect as RendererRect, ViewportConfig,
+        };
 
-        // Scale viewport coordinates to texture coordinates
-        // The texture is rendered at config dimensions but displayed scaled in viewport
-        let texture_pos = if let Some(viewport) = viewport_rect {
-            let scale_x = config.width as f32 / viewport.width;
-            let scale_y = config.height as f32 / viewport.height;
-            [local_pos[0] * scale_x, local_pos[1] * scale_y]
+        // Convert viewport-local coordinates to screen coordinates
+        let screen_pos = if let Some(viewport) = viewport_rect {
+            [viewport.x + local_pos[0], viewport.y + local_pos[1]]
         } else {
             local_pos // Fallback if no viewport info
         };
 
-        // Convert texture coordinates to board cell
-        if let Some((row, col)) = layout.screen_to_cell(texture_pos[0], texture_pos[1]) {
+        // Create ViewportConfig with egui viewport rect and camera bounds
+        let viewport_rect = match viewport_rect {
+            Some(rect) => rect,
+            None => {
+                self.last_click_info = Some("No viewport rect available".to_string());
+                return;
+            }
+        };
+
+        let camera_bounds = self.world.camera().view_bounds();
+        let viewport_config = ViewportConfig::new(
+            RendererRect {
+                x: viewport_rect.x as i32,
+                y: viewport_rect.y as i32,
+                width: viewport_rect.width as u32,
+                height: viewport_rect.height as u32,
+            },
+            RendererBounds {
+                min: camera_bounds.min,
+                max: camera_bounds.max,
+            },
+        );
+
+        // Convert screen to world coordinates
+        let world_pos = viewport_config.screen_to_world(screen_pos);
+
+        // Convert world coordinates to board cell
+        // Board is from -1.5 to +1.5 in both axes, with 3x3 cells (each cell is 1.0 unit)
+        // Cell (0,0) is at [-1.5, -0.5] x [-1.5, -0.5]
+        // Cell (1,1) is at [-0.5, 0.5] x [-0.5, 0.5]
+        // Cell (2,2) is at [0.5, 1.5] x [0.5, 1.5]
+        let col = ((world_pos[0] + 1.5) / 1.0).floor() as i32;
+        let row = ((world_pos[1] + 1.5) / 1.0).floor() as i32;
+
+        if (0..3).contains(&row) && (0..3).contains(&col) {
+            let row = row as usize;
+            let col = col as usize;
+
             // Try to make the move
             if let Some(tictactoe) = self.world.tictactoe_mut()
                 && tictactoe.make_move(row, col)
@@ -172,8 +206,8 @@ impl App {
             }
         } else {
             self.last_click_info = Some(format!(
-                "Click outside board: viewport_pos=({:.1}, {:.1})",
-                local_pos[0], local_pos[1]
+                "Click outside board: world_pos=({:.2}, {:.2})",
+                world_pos[0], world_pos[1]
             ));
         }
     }
@@ -301,6 +335,9 @@ impl ApplicationHandler for App {
                     let input_context = &mut self.input_context;
                     let last_click_info = &self.last_click_info;
 
+                    // Get camera bounds for coordinate conversion
+                    let camera_bounds = *world.camera().view_bounds();
+
                     // Viewports are re-registered each frame (no need to clear)
                     // We need them to persist between frames for input processing
 
@@ -335,20 +372,56 @@ impl ApplicationHandler for App {
                             winit::dpi::PhysicalPosition::new(pos[0] as f64, pos[1] as f64)
                         });
 
+                        // Calculate debug info for mouse
+                        let viewport_id = ViewportId(0);
+                        let viewport_rect = input_context.viewport_rect(viewport_id);
+                        let egui_viewport_rect = viewport_rect.map(|r| {
+                            egui::Rect::from_min_size(
+                                egui::pos2(r.x, r.y),
+                                egui::vec2(r.width, r.height),
+                            )
+                        });
+
+                        // Calculate viewport-local position
+                        let viewport_local_pos = cursor_pos.and_then(|pos| {
+                            viewport_rect.map(|rect| [pos.x as f32 - rect.x, pos.y as f32 - rect.y])
+                        });
+
+                        // Calculate world coordinates using the egui viewport rect (screen coordinates)
+                        use super::renderer::context::{
+                            Bounds as RendererBounds, Rect as RendererRect, ViewportConfig,
+                        };
+                        let cursor_world_pos = if let (Some(screen_pos), Some(vp_rect)) =
+                            (input_state.mouse.screen_pos, viewport_rect)
+                        {
+                            // Create ViewportConfig with egui viewport rect (screen coords) and camera bounds
+                            let viewport_config = ViewportConfig::new(
+                                RendererRect {
+                                    x: vp_rect.x as i32,
+                                    y: vp_rect.y as i32,
+                                    width: vp_rect.width as u32,
+                                    height: vp_rect.height as u32,
+                                },
+                                RendererBounds {
+                                    min: camera_bounds.min,
+                                    max: camera_bounds.max,
+                                },
+                            );
+                            Some(viewport_config.screen_to_world(screen_pos))
+                        } else {
+                            None
+                        };
+
                         debug_ui.render(
                             ctx,
                             world,
                             &config,
                             MouseDebugInfo {
                                 cursor_pos,
-                                viewport_rect: input_context.viewport_rect(ViewportId(0)).map(
-                                    |r| {
-                                        egui::Rect::from_min_size(
-                                            egui::pos2(r.x, r.y),
-                                            egui::vec2(r.width, r.height),
-                                        )
-                                    },
-                                ),
+                                viewport_rect: egui_viewport_rect,
+                                viewport_id: Some(format!("{:?}", viewport_id)),
+                                viewport_local_pos,
+                                world_pos: cursor_world_pos,
                                 last_click_info,
                             },
                             input_context,

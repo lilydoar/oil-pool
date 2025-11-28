@@ -23,6 +23,31 @@ pub struct Bounds {
     pub max: [f32; 2],
 }
 
+impl Bounds {
+    /// Get the width of the bounds
+    pub fn width(&self) -> f32 {
+        self.max[0] - self.min[0]
+    }
+
+    /// Get the height of the bounds
+    pub fn height(&self) -> f32 {
+        self.max[1] - self.min[1]
+    }
+
+    /// Get the aspect ratio (width / height)
+    pub fn aspect_ratio(&self) -> f32 {
+        self.width() / self.height()
+    }
+
+    /// Get the center point
+    pub fn center(&self) -> [f32; 2] {
+        [
+            (self.min[0] + self.max[0]) / 2.0,
+            (self.min[1] + self.max[1]) / 2.0,
+        ]
+    }
+}
+
 // ============================================================================
 // VIEWPORT CONFIGURATION
 // ============================================================================
@@ -48,6 +73,44 @@ impl ViewportConfig {
             coord_bounds,
             depth_range: (0.0, 1.0),
         }
+    }
+
+    /// Convert screen pixel coordinates to world coordinates
+    /// Screen coordinates are in pixels relative to the top-left of the window
+    pub fn screen_to_world(&self, screen_pos: [f32; 2]) -> [f32; 2] {
+        // Normalize to 0-1 range within the pixel rect
+        let norm_x = (screen_pos[0] - self.pixel_rect.x as f32) / self.pixel_rect.width as f32;
+        let norm_y = (screen_pos[1] - self.pixel_rect.y as f32) / self.pixel_rect.height as f32;
+
+        // Map to world bounds
+        [
+            self.coord_bounds.min[0] + norm_x * self.coord_bounds.width(),
+            self.coord_bounds.min[1] + norm_y * self.coord_bounds.height(),
+        ]
+    }
+
+    /// Convert world coordinates to screen pixel coordinates
+    pub fn world_to_screen(&self, world_pos: [f32; 2]) -> [f32; 2] {
+        // Normalize to 0-1 range within world bounds
+        let norm_x = (world_pos[0] - self.coord_bounds.min[0]) / self.coord_bounds.width();
+        let norm_y = (world_pos[1] - self.coord_bounds.min[1]) / self.coord_bounds.height();
+
+        // Map to pixel rect
+        [
+            self.pixel_rect.x as f32 + norm_x * self.pixel_rect.width as f32,
+            self.pixel_rect.y as f32 + norm_y * self.pixel_rect.height as f32,
+        ]
+    }
+
+    /// Get the scale factor from pixels to world units
+    /// This is useful for converting pixel measurements (like line thickness) to world units
+    pub fn pixels_to_world_scale(&self) -> f32 {
+        self.coord_bounds.width() / self.pixel_rect.width as f32
+    }
+
+    /// Get the scale factor from world units to pixels
+    pub fn world_to_pixels_scale(&self) -> f32 {
+        self.pixel_rect.width as f32 / self.coord_bounds.width()
     }
 }
 
@@ -221,6 +284,9 @@ impl RenderContext {
 
     /// Submit all commands to shader registry
     pub fn submit(&mut self, shader_registry: &mut ShaderRegistry) {
+        use super::super::ellipse_renderer::EllipseRenderer;
+        use super::super::line_renderer::LineRenderer;
+
         // Sort by (context_id, depth, batch_key)
         // This minimizes GPU state changes
         self.commands.sort_by(|a, b| {
@@ -236,10 +302,39 @@ impl RenderContext {
                 ))
         });
 
-        // Dispatch all commands
-        // Note: Context state application (scissor/viewport) will be added
-        // when we integrate with the render pass
+        // Apply viewport transforms and dispatch commands
+        let mut current_context_id = usize::MAX; // Force initial context switch
         for cmd in &self.commands {
+            // Apply viewport state when context changes
+            if cmd.context_id != current_context_id {
+                current_context_id = cmd.context_id;
+
+                // Get context state
+                if let Some(ctx_state) = self.context_snapshots.get(current_context_id) {
+                    let bounds = &ctx_state.viewport.coord_bounds;
+
+                    // Apply viewport to LineRenderer
+                    if let Some(line_renderer) = shader_registry
+                        .get_mut("line")
+                        .and_then(|r| r.as_any_mut().downcast_mut::<LineRenderer>())
+                    {
+                        line_renderer.set_viewport(bounds.min, bounds.max);
+                    }
+
+                    // Apply viewport to EllipseRenderer
+                    if let Some(ellipse_renderer) = shader_registry
+                        .get_mut("ellipse")
+                        .and_then(|r| r.as_any_mut().downcast_mut::<EllipseRenderer>())
+                    {
+                        ellipse_renderer.set_viewport(bounds.min, bounds.max);
+                    }
+
+                    // TODO: Apply scissor rect via render pass
+                    // TODO: Apply color tint and alpha multiplier
+                }
+            }
+
+            // Dispatch command to appropriate shader
             cmd.command.dispatch(shader_registry);
         }
 
@@ -507,5 +602,238 @@ impl Drop for EllipseBuilder<'_> {
         self.ctx
             .commands
             .push(RenderCommand::new(command, self.depth, self.context_id));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_bounds_dimensions() {
+        let bounds = Bounds {
+            min: [0.0, 0.0],
+            max: [100.0, 50.0],
+        };
+
+        assert_eq!(bounds.width(), 100.0);
+        assert_eq!(bounds.height(), 50.0);
+        assert_eq!(bounds.aspect_ratio(), 2.0);
+        assert_eq!(bounds.center(), [50.0, 25.0]);
+    }
+
+    #[test]
+    fn test_bounds_negative_coords() {
+        let bounds = Bounds {
+            min: [-10.0, -20.0],
+            max: [10.0, 20.0],
+        };
+
+        assert_eq!(bounds.width(), 20.0);
+        assert_eq!(bounds.height(), 40.0);
+        assert_eq!(bounds.aspect_ratio(), 0.5);
+        assert_eq!(bounds.center(), [0.0, 0.0]);
+    }
+
+    #[test]
+    fn test_viewport_screen_to_world_simple() {
+        // Simple case: 100x100 pixel rect mapping to [0,0] to [10,10] world
+        let viewport = ViewportConfig::new(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
+            Bounds {
+                min: [0.0, 0.0],
+                max: [10.0, 10.0],
+            },
+        );
+
+        // Center of screen should map to center of world
+        assert_eq!(viewport.screen_to_world([50.0, 50.0]), [5.0, 5.0]);
+
+        // Corners
+        assert_eq!(viewport.screen_to_world([0.0, 0.0]), [0.0, 0.0]);
+        assert_eq!(viewport.screen_to_world([100.0, 100.0]), [10.0, 10.0]);
+
+        // Quarter points
+        assert_eq!(viewport.screen_to_world([25.0, 25.0]), [2.5, 2.5]);
+        assert_eq!(viewport.screen_to_world([75.0, 75.0]), [7.5, 7.5]);
+    }
+
+    #[test]
+    fn test_viewport_screen_to_world_with_offset() {
+        // Viewport doesn't start at origin
+        let viewport = ViewportConfig::new(
+            Rect {
+                x: 50,
+                y: 50,
+                width: 100,
+                height: 100,
+            },
+            Bounds {
+                min: [-1.0, -1.0],
+                max: [1.0, 1.0],
+            },
+        );
+
+        // Screen [50, 50] is top-left of viewport -> world [-1, -1]
+        assert_eq!(viewport.screen_to_world([50.0, 50.0]), [-1.0, -1.0]);
+
+        // Screen [100, 100] is center of viewport -> world [0, 0]
+        assert_eq!(viewport.screen_to_world([100.0, 100.0]), [0.0, 0.0]);
+
+        // Screen [150, 150] is bottom-right of viewport -> world [1, 1]
+        assert_eq!(viewport.screen_to_world([150.0, 150.0]), [1.0, 1.0]);
+    }
+
+    #[test]
+    fn test_viewport_world_to_screen_simple() {
+        let viewport = ViewportConfig::new(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 100,
+                height: 100,
+            },
+            Bounds {
+                min: [0.0, 0.0],
+                max: [10.0, 10.0],
+            },
+        );
+
+        // World center to screen center
+        assert_eq!(viewport.world_to_screen([5.0, 5.0]), [50.0, 50.0]);
+
+        // Corners
+        assert_eq!(viewport.world_to_screen([0.0, 0.0]), [0.0, 0.0]);
+        assert_eq!(viewport.world_to_screen([10.0, 10.0]), [100.0, 100.0]);
+
+        // Quarter points
+        assert_eq!(viewport.world_to_screen([2.5, 2.5]), [25.0, 25.0]);
+        assert_eq!(viewport.world_to_screen([7.5, 7.5]), [75.0, 75.0]);
+    }
+
+    #[test]
+    fn test_viewport_world_to_screen_with_offset() {
+        let viewport = ViewportConfig::new(
+            Rect {
+                x: 50,
+                y: 50,
+                width: 100,
+                height: 100,
+            },
+            Bounds {
+                min: [-1.0, -1.0],
+                max: [1.0, 1.0],
+            },
+        );
+
+        // World [-1, -1] -> screen [50, 50] (top-left of viewport)
+        assert_eq!(viewport.world_to_screen([-1.0, -1.0]), [50.0, 50.0]);
+
+        // World [0, 0] -> screen [100, 100] (center of viewport)
+        assert_eq!(viewport.world_to_screen([0.0, 0.0]), [100.0, 100.0]);
+
+        // World [1, 1] -> screen [150, 150] (bottom-right of viewport)
+        assert_eq!(viewport.world_to_screen([1.0, 1.0]), [150.0, 150.0]);
+    }
+
+    #[test]
+    fn test_viewport_roundtrip_conversion() {
+        let viewport = ViewportConfig::new(
+            Rect {
+                x: 100,
+                y: 200,
+                width: 800,
+                height: 600,
+            },
+            Bounds {
+                min: [-1.5, -2.0],
+                max: [1.5, 2.0],
+            },
+        );
+
+        // Test that screen -> world -> screen is identity
+        let screen_pos = [450.0, 500.0];
+        let world_pos = viewport.screen_to_world(screen_pos);
+        let back_to_screen = viewport.world_to_screen(world_pos);
+
+        assert!((screen_pos[0] - back_to_screen[0]).abs() < 0.001);
+        assert!((screen_pos[1] - back_to_screen[1]).abs() < 0.001);
+
+        // Test that world -> screen -> world is identity
+        let world_pos = [0.5, -1.0];
+        let screen_pos = viewport.world_to_screen(world_pos);
+        let back_to_world = viewport.screen_to_world(screen_pos);
+
+        assert!((world_pos[0] - back_to_world[0]).abs() < 0.001);
+        assert!((world_pos[1] - back_to_world[1]).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_viewport_scale_factors() {
+        let viewport = ViewportConfig::new(
+            Rect {
+                x: 0,
+                y: 0,
+                width: 800,
+                height: 600,
+            },
+            Bounds {
+                min: [-1.5, -2.0],
+                max: [1.5, 2.0],
+            },
+        );
+
+        // World width is 3.0, pixel width is 800
+        // So pixels_to_world = 3.0 / 800.0 = 0.00375
+        let pixels_to_world = viewport.pixels_to_world_scale();
+        assert!((pixels_to_world - 3.0 / 800.0).abs() < 0.0001);
+
+        // world_to_pixels = 800.0 / 3.0 ≈ 266.667
+        let world_to_pixels = viewport.world_to_pixels_scale();
+        assert!((world_to_pixels - 800.0 / 3.0).abs() < 0.001);
+
+        // These should be inverses
+        assert!((pixels_to_world * world_to_pixels - 1.0).abs() < 0.0001);
+    }
+
+    #[test]
+    fn test_tictactoe_camera_viewport() {
+        // This tests the actual viewport used in the tic-tac-toe game
+        // Camera bounds: [-1.5, -2.0] to [1.5, 2.0] (3.0 x 4.0 world units)
+        // Assume screen is 900x900 pixels, viewport is 90% = 810x810
+        // But world aspect is 3:4, so actual viewport will be 810x1080 (fit height)
+        // Centered: x=45, y=-135 (negative because taller than screen)
+        // Actually, if screen is square, fitting a 3:4 viewport:
+        // We fit to width: width=810, height=1080
+        // Center horizontally: x = (900-810)/2 = 45
+        // Center vertically: y = (900-1080)/2 = -90
+
+        let viewport = ViewportConfig::new(
+            Rect {
+                x: 45,
+                y: 0, // Simplified for test
+                width: 810,
+                height: 1080,
+            },
+            Bounds {
+                min: [-1.5, -2.0],
+                max: [1.5, 2.0],
+            },
+        );
+
+        // Test that board center [0, 0] maps to viewport center
+        let screen_pos = viewport.world_to_screen([0.0, 0.0]);
+        assert!((screen_pos[0] - (45.0 + 810.0 / 2.0)).abs() < 0.1);
+        assert!((screen_pos[1] - (0.0 + 1080.0 / 2.0)).abs() < 0.1);
+
+        // Test that clicking viewport center gives world [0, 0]
+        let world_pos = viewport.screen_to_world([45.0 + 405.0, 540.0]);
+        assert!((world_pos[0] - 0.0).abs() < 0.001);
+        assert!((world_pos[1] - 0.0).abs() < 0.001);
     }
 }

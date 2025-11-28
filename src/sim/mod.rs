@@ -2,11 +2,14 @@
 //!
 //! Handles game state, logic, physics, and entities.
 
+pub mod camera;
 pub mod leaf;
 pub mod tictactoe;
 
 use std::any::Any;
+use std::collections::HashMap;
 
+pub use camera::{Bounds, Camera};
 pub use leaf::LeafSimulation;
 pub use tictactoe::TicTacToeSimulation;
 
@@ -57,6 +60,10 @@ pub struct World {
     rng_seed: u64,
     /// Collection of all active simulations
     simulations: Vec<Box<dyn Simulation>>,
+
+    // Camera system
+    /// Cameras indexed by name (default camera is "main")
+    cameras: HashMap<String, Camera>,
 }
 
 impl World {
@@ -234,6 +241,35 @@ impl World {
     pub fn leaf_mut(&mut self) -> Option<&mut LeafSimulation> {
         self.get_simulation_typed_mut::<LeafSimulation>("leaf")
     }
+
+    /// Get the default camera (named "main")
+    pub fn camera(&self) -> &Camera {
+        self.cameras
+            .get("main")
+            .expect("World must have a 'main' camera")
+    }
+
+    /// Get mutable reference to default camera
+    pub fn camera_mut(&mut self) -> &mut Camera {
+        self.cameras
+            .get_mut("main")
+            .expect("World must have a 'main' camera")
+    }
+
+    /// Get a named camera
+    pub fn get_camera(&self, name: &str) -> Option<&Camera> {
+        self.cameras.get(name)
+    }
+
+    /// Get a mutable named camera
+    pub fn get_camera_mut(&mut self, name: &str) -> Option<&mut Camera> {
+        self.cameras.get_mut(name)
+    }
+
+    /// Add or update a named camera
+    pub fn set_camera(&mut self, name: String, camera: Camera) {
+        self.cameras.insert(name, camera);
+    }
 }
 
 impl Default for World {
@@ -246,6 +282,12 @@ impl Default for World {
             paused: false,
             rng_seed: rand::random(),
             simulations: Vec::new(),
+            cameras: {
+                let mut cameras = HashMap::new();
+                // Default camera with padding for scores/UI
+                cameras.insert("main".to_string(), Camera::new([-2.0, -2.5], [2.0, 2.5]));
+                cameras
+            },
         };
 
         // Add TicTacToe simulation by default

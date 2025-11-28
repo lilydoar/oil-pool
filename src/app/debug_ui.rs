@@ -8,6 +8,9 @@ use sysinfo::System;
 pub struct MouseDebugInfo<'a> {
     pub cursor_pos: Option<winit::dpi::PhysicalPosition<f64>>,
     pub viewport_rect: Option<egui::Rect>,
+    pub viewport_id: Option<String>,
+    pub viewport_local_pos: Option<[f32; 2]>,
+    pub world_pos: Option<[f32; 2]>,
     pub last_click_info: &'a Option<String>,
 }
 
@@ -157,9 +160,15 @@ impl DebugUIState {
                             ui.label(format!("Middle down: {}", pointer.middle_down()));
 
                             // Viewport info
+                            if let Some(id) = &mouse_info.viewport_id {
+                                ui.label(format!("Viewport ID: {}", id));
+                            } else {
+                                ui.label("Viewport ID: None");
+                            }
+
                             if let Some(rect) = mouse_info.viewport_rect {
                                 ui.label(format!(
-                                    "Viewport: ({:.0}, {:.0}) -> ({:.0}, {:.0})",
+                                    "Viewport rect: ({:.0}, {:.0}) -> ({:.0}, {:.0})",
                                     rect.left(),
                                     rect.top(),
                                     rect.right(),
@@ -171,8 +180,30 @@ impl DebugUIState {
                                     rect.height()
                                 ));
                             } else {
-                                ui.label("Viewport: None");
+                                ui.label("Viewport rect: None");
                             }
+
+                            // Viewport-local coordinates
+                            if let Some(local_pos) = mouse_info.viewport_local_pos {
+                                ui.label(format!(
+                                    "Viewport-local: ({:.1}, {:.1})",
+                                    local_pos[0], local_pos[1]
+                                ));
+                            } else {
+                                ui.label("Viewport-local: None");
+                            }
+
+                            // World coordinates
+                            if let Some(world_pos) = mouse_info.world_pos {
+                                ui.label(format!(
+                                    "World coords: ({:.3}, {:.3})",
+                                    world_pos[0], world_pos[1]
+                                ));
+                            } else {
+                                ui.label("World coords: None");
+                            }
+
+                            ui.separator();
 
                             // Last click info
                             if let Some(info) = mouse_info.last_click_info {

@@ -40,6 +40,12 @@ impl Renderer {
         &self.config
     }
 
+    /// Returns a reference to the simulation renderer
+    /// Useful for coordinate conversion and other simulation-specific rendering queries
+    pub fn sim_renderer(&self) -> &SimRenderer {
+        &self.sim_renderer
+    }
+
     /// Initialize vines in the leaf simulation (call once after world is created)
     pub fn init_leaf_vines(&mut self, world: &mut World) {
         self.sim_renderer.init_vines(world);

@@ -5,7 +5,6 @@
 pub mod config;
 pub mod debug_ui;
 mod ellipse_renderer;
-mod geometry;
 pub mod input;
 mod line_renderer;
 mod renderer;

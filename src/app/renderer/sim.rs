@@ -1,8 +1,7 @@
 use super::context::RenderContext;
 use super::viewport::Viewport;
 use crate::app::{
-    ellipse_renderer::EllipseRenderer, geometry, line_renderer::LineRenderer,
-    shader_system::ShaderRegistry,
+    ellipse_renderer::EllipseRenderer, line_renderer::LineRenderer, shader_system::ShaderRegistry,
 };
 use crate::sim::{
     World,
@@ -28,6 +27,8 @@ pub struct SimRenderer {
     render_context: RenderContext,
     width: u32,
     height: u32,
+    /// Last viewport config used for rendering (for coordinate conversion)
+    last_viewport_config: Option<super::context::ViewportConfig>,
 }
 
 impl SimRenderer {
@@ -67,6 +68,7 @@ impl SimRenderer {
             render_context,
             width,
             height,
+            last_viewport_config: None,
         }
     }
 
@@ -78,6 +80,20 @@ impl SimRenderer {
     /// Returns a mutable reference to the rendering context for command building
     pub fn commands(&mut self) -> &mut RenderContext {
         &mut self.render_context
+    }
+
+    /// Get the last viewport config used for rendering
+    /// This is useful for converting screen coordinates to world coordinates for input handling
+    pub fn viewport_config(&self) -> Option<&super::context::ViewportConfig> {
+        self.last_viewport_config.as_ref()
+    }
+
+    /// Convert screen pixel coordinates to world coordinates
+    /// Returns None if no viewport config is available yet (before first frame)
+    pub fn screen_to_world(&self, screen_pos: [f32; 2]) -> Option<[f32; 2]> {
+        self.last_viewport_config
+            .as_ref()
+            .map(|config| config.screen_to_world(screen_pos))
     }
 
     /// Resizes the render texture
@@ -107,6 +123,34 @@ impl SimRenderer {
             desired_maximum_frame_latency: 2,
         };
         self.shader_registry.init_all(device, &config);
+    }
+
+    /// Calculate viewport pixel rectangle that maintains aspect ratio
+    fn calculate_viewport_rect(&self, world_bounds: &crate::sim::Bounds) -> super::context::Rect {
+        use super::context::Rect;
+
+        // Fit world bounds into available screen space while maintaining aspect ratio
+        let world_aspect = world_bounds.aspect_ratio();
+        let screen_aspect = self.width as f32 / self.height as f32;
+
+        let (width, height) = if world_aspect > screen_aspect {
+            // World is wider - fit to width
+            let width = self.width as f32 * 0.9; // 90% of screen
+            let height = width / world_aspect;
+            (width, height)
+        } else {
+            // World is taller - fit to height
+            let height = self.height as f32 * 0.9;
+            let width = height * world_aspect;
+            (width, height)
+        };
+
+        Rect {
+            x: ((self.width as f32 - width) / 2.0) as i32,
+            y: ((self.height as f32 - height) / 2.0) as i32,
+            width: width as u32,
+            height: height as u32,
+        }
     }
 
     /// Initialize vines in leaf simulation (call once before drawing)
@@ -156,11 +200,10 @@ impl SimRenderer {
         queue: &wgpu::Queue,
         world: &World,
     ) {
+        use super::context::ViewportConfig;
+
         // Clear command buffer for new frame
         self.render_context.clear();
-
-        // Create board layout
-        let layout = geometry::BoardLayout::centered(self.width as f32, self.height as f32);
 
         // Get tic-tac-toe simulation
         let tictactoe = match world.tictactoe() {
@@ -171,136 +214,151 @@ impl SimRenderer {
         // Get leaf simulation
         let leaf_sim = world.leaf();
 
-        // RENDER TICTACTOE BOARD (background layer)
-        {
-            // Board grid lines
-            let grid_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_board_grid(&layout)
-                .into_iter()
-                .map(|line| (line.from, line.to))
-                .collect();
+        // Get camera from world
+        let camera = world.camera();
+        let world_bounds = *camera.view_bounds();
 
-            self.commands()
-                .lines(&grid_lines)
-                .thickness(layout.line_thickness)
-                .depth(0.0);
+        // Calculate pixel rect (maintain aspect ratio of camera)
+        let pixel_rect = self.calculate_viewport_rect(&world_bounds);
 
-            // Generate pieces
+        // Convert pixel measurements to world units
+        let pixels_to_world = world_bounds.width() / pixel_rect.width as f32;
+        let line_thickness = 4.0 * pixels_to_world; // 4 pixels → world units
+
+        // Convert sim::Bounds to renderer::context::Bounds
+        let coord_bounds = super::context::Bounds {
+            min: world_bounds.min,
+            max: world_bounds.max,
+        };
+
+        let viewport_config = ViewportConfig::new(pixel_rect, coord_bounds);
+
+        // Store for coordinate conversion in input handling
+        self.last_viewport_config = Some(viewport_config.clone());
+
+        // Render everything inside the world-coordinate viewport
+        // All coordinates are now in world space (-1.5 to +1.5)
+        self.render_context.viewport(viewport_config, |vp| {
+            // RENDER TICTACTOE BOARD (background layer)
+            // Board grid lines in world coordinates (2 horizontal + 2 vertical)
+            let grid_lines: Vec<([f32; 2], [f32; 2])> = vec![
+                // Horizontal lines
+                ([-1.5, -0.5], [1.5, -0.5]),
+                ([-1.5, 0.5], [1.5, 0.5]),
+                // Vertical lines
+                ([-0.5, -1.5], [-0.5, 1.5]),
+                ([0.5, -1.5], [0.5, 1.5]),
+            ];
+
+            vp.lines(&grid_lines).thickness(line_thickness).depth(0.0);
+
+            // Generate pieces in world coordinates
             let board = tictactoe.board();
             for (row, row_tiles) in board.iter().enumerate() {
                 for (col, &tile) in row_tiles.iter().enumerate() {
+                    // Cell center in world coords
+                    let cx = -1.0 + col as f32;
+                    let cy = -1.0 + row as f32;
+                    let padding = 0.2; // Padding from cell edges
+
                     match tile {
                         Tile::X => {
-                            let x_lines: Vec<([f32; 2], [f32; 2])> =
-                                geometry::generate_x(&layout, row, col)
-                                    .into_iter()
-                                    .map(|line| (line.from, line.to))
-                                    .collect();
-
-                            self.commands()
-                                .lines(&x_lines)
-                                .thickness(layout.line_thickness)
-                                .depth(0.1);
+                            // X is two diagonal lines
+                            let x_lines = vec![
+                                (
+                                    [cx - 0.5 + padding, cy - 0.5 + padding],
+                                    [cx + 0.5 - padding, cy + 0.5 - padding],
+                                ),
+                                (
+                                    [cx - 0.5 + padding, cy + 0.5 - padding],
+                                    [cx + 0.5 - padding, cy - 0.5 + padding],
+                                ),
+                            ];
+                            vp.lines(&x_lines).thickness(line_thickness).depth(0.1);
                         }
                         Tile::O => {
-                            let o_lines: Vec<([f32; 2], [f32; 2])> =
-                                geometry::generate_o(&layout, row, col)
-                                    .into_iter()
-                                    .map(|line| (line.from, line.to))
-                                    .collect();
-
-                            self.commands()
-                                .lines(&o_lines)
-                                .thickness(layout.line_thickness)
-                                .depth(0.1);
+                            // O is a circle
+                            let radius = 0.5 - padding;
+                            vp.circle([cx, cy], radius).depth(0.1);
                         }
                         Tile::Empty => {}
                     }
                 }
             }
 
-            // Generate score numbers at top (with more padding)
-            let score_y = layout.center_y - (layout.cell_size * 1.5) - 100.0;
+            // RENDER SCORES (using line-based digits in world coordinates)
             let x_score = tictactoe.wins(Player::X);
             let o_score = tictactoe.wins(Player::O);
 
-            // X score on left
-            let x_score_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_number(
+            // Score positions in world coordinates (above the board)
+            let score_y = 1.8; // Above the board (board goes from -1.5 to 1.5)
+            let digit_width = 0.3;
+            let digit_height = 0.5;
+            let digit_thickness = line_thickness;
+
+            // X score on left side
+            let x_score_pos = [-1.0, score_y];
+            render_digit(
+                vp,
                 x_score,
-                layout.center_x - 80.0,
-                score_y,
-                30.0,
-                50.0,
-                10.0,
-                layout.line_thickness,
-            )
-            .into_iter()
-            .map(|line| (line.from, line.to))
-            .collect();
+                x_score_pos,
+                digit_width,
+                digit_height,
+                digit_thickness,
+            );
 
-            self.commands()
-                .lines(&x_score_lines)
-                .thickness(layout.line_thickness)
-                .depth(0.2);
-
-            // O score on right
-            let o_score_lines: Vec<([f32; 2], [f32; 2])> = geometry::generate_number(
+            // O score on right side
+            let o_score_pos = [0.7, score_y];
+            render_digit(
+                vp,
                 o_score,
-                layout.center_x + 50.0,
-                score_y,
-                30.0,
-                50.0,
-                10.0,
-                layout.line_thickness,
-            )
-            .into_iter()
-            .map(|line| (line.from, line.to))
-            .collect();
+                o_score_pos,
+                digit_width,
+                digit_height,
+                digit_thickness,
+            );
 
-            self.commands()
-                .lines(&o_score_lines)
-                .thickness(layout.line_thickness)
-                .depth(0.2);
-        }
+            // RENDER LEAVES (foreground layer - rendered on top of board)
+            // Leaves are already in world coordinates
+            if let Some(leaf_sim) = leaf_sim {
+                for leaf in leaf_sim.leaves() {
+                    // Leaf position is already in world coordinates
+                    // But leaf.size is in PIXELS, needs conversion to world units
+                    let size_world = leaf.size * pixels_to_world;
 
-        // RENDER LEAVES (foreground layer - rendered on top of board)
-        if let Some(leaf_sim) = leaf_sim {
-            for leaf in leaf_sim.leaves() {
-                // Transform leaf position from world space to screen space
-                let screen_position = layout.world_to_screen(leaf.position);
+                    // Scale size and alpha by growth (0.0 = invisible, 1.0 = full)
+                    let current_size_x = size_world * leaf.growth;
+                    let current_size_y = current_size_x * leaf.aspect;
+                    let current_alpha = leaf.growth; // Fully opaque when grown
 
-                // Scale size and alpha by growth (0.0 = invisible, 1.0 = full)
-                let current_size_x = leaf.size * leaf.growth;
-                let current_size_y = current_size_x * leaf.aspect;
-                let current_alpha = leaf.growth; // Fully opaque when grown
+                    // Calculate focus point for rotation (makes leaves appear to hang from a point)
+                    // For an ellipse, focus is at distance c = sqrt(a² - b²) from center
+                    let a_sq = current_size_x * current_size_x;
+                    let b_sq = current_size_y * current_size_y;
+                    let focus_distance = if a_sq > b_sq {
+                        (a_sq - b_sq).sqrt()
+                    } else {
+                        0.0 // Degenerate case (circle)
+                    };
 
-                // Calculate focus point for rotation (makes leaves appear to hang from a point)
-                // For an ellipse, focus is at distance c = sqrt(a² - b²) from center
-                let a_sq = current_size_x * current_size_x;
-                let b_sq = current_size_y * current_size_y;
-                let focus_distance = if a_sq > b_sq {
-                    (a_sq - b_sq).sqrt()
-                } else {
-                    0.0 // Degenerate case (circle)
-                };
+                    // Focus offset rotated by leaf rotation angle
+                    let focus_offset_x = focus_distance * leaf.rotation.cos();
+                    let focus_offset_y = focus_distance * leaf.rotation.sin();
 
-                // Focus offset rotated by leaf rotation angle
-                let focus_offset_x = focus_distance * leaf.rotation.cos();
-                let focus_offset_y = focus_distance * leaf.rotation.sin();
+                    // Adjust center so rotation happens around focus point instead of center
+                    let adjusted_center = [
+                        leaf.position[0] - focus_offset_x,
+                        leaf.position[1] - focus_offset_y,
+                    ];
 
-                // Adjust center so rotation happens around focus point instead of center
-                let adjusted_center = [
-                    screen_position[0] - focus_offset_x,
-                    screen_position[1] - focus_offset_y,
-                ];
-
-                self.commands()
-                    .ellipse(adjusted_center, current_size_x, current_size_y)
-                    .rotation(leaf.rotation)
-                    .color(LEAF_COLORS[leaf.color_variant as usize % 4])
-                    .alpha(current_alpha)
-                    .depth(0.5);
+                    vp.ellipse(adjusted_center, current_size_x, current_size_y)
+                        .rotation(leaf.rotation)
+                        .color(LEAF_COLORS[leaf.color_variant as usize % 4])
+                        .alpha(current_alpha)
+                        .depth(0.5);
+                }
             }
-        }
+        }); // End viewport
 
         // Submit command buffer to shader registry (dispatches commands to shaders)
         self.render_context.submit(&mut self.shader_registry);
@@ -337,5 +395,76 @@ impl SimRenderer {
 
         // End frame for shaders
         self.shader_registry.end_frame();
+    }
+}
+
+/// Renders a single digit (0-9) using 7-segment display style
+fn render_digit(
+    vp: &mut super::context::ViewportScope<'_>,
+    digit: u32,
+    pos: [f32; 2],
+    width: f32,
+    height: f32,
+    thickness: f32,
+) {
+    // 7-segment display segments (positioned relative to top-left corner)
+    //   a
+    //  f b
+    //   g
+    //  e c
+    //   d
+
+    let half_h = height / 2.0;
+
+    // Segment positions (in world coordinates, relative to pos)
+    let segments = [
+        // a: top horizontal
+        ([pos[0], pos[1]], [pos[0] + width, pos[1]]),
+        // b: top-right vertical
+        ([pos[0] + width, pos[1]], [pos[0] + width, pos[1] + half_h]),
+        // c: bottom-right vertical
+        (
+            [pos[0] + width, pos[1] + half_h],
+            [pos[0] + width, pos[1] + height],
+        ),
+        // d: bottom horizontal
+        ([pos[0], pos[1] + height], [pos[0] + width, pos[1] + height]),
+        // e: bottom-left vertical
+        ([pos[0], pos[1] + half_h], [pos[0], pos[1] + height]),
+        // f: top-left vertical
+        ([pos[0], pos[1]], [pos[0], pos[1] + half_h]),
+        // g: middle horizontal
+        ([pos[0], pos[1] + half_h], [pos[0] + width, pos[1] + half_h]),
+    ];
+
+    // Which segments to light up for each digit (a, b, c, d, e, f, g)
+    let segment_patterns = [
+        [true, true, true, true, true, true, false],     // 0
+        [false, true, true, false, false, false, false], // 1
+        [true, true, false, true, true, false, true],    // 2
+        [true, true, true, true, false, false, true],    // 3
+        [false, true, true, false, false, true, true],   // 4
+        [true, false, true, true, false, true, true],    // 5
+        [true, false, true, true, true, true, true],     // 6
+        [true, true, true, false, false, false, false],  // 7
+        [true, true, true, true, true, true, true],      // 8
+        [true, true, true, true, false, true, true],     // 9
+    ];
+
+    if digit >= 10 {
+        return; // Only support single digits
+    }
+
+    let pattern = segment_patterns[digit as usize];
+    let mut active_segments = Vec::new();
+
+    for (i, &active) in pattern.iter().enumerate() {
+        if active {
+            active_segments.push(segments[i]);
+        }
+    }
+
+    if !active_segments.is_empty() {
+        vp.lines(&active_segments).thickness(thickness).depth(0.2);
     }
 }
